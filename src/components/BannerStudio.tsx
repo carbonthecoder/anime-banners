@@ -19,7 +19,6 @@ import {
   Share2,
   Cpu,
   Heart,
-  HelpCircle,
   Undo2,
 } from "lucide-react";
 import { marked } from "marked";
@@ -88,13 +87,13 @@ export default function BannerStudio() {
 
   // Rotation Pool, Favorites & Visual Overlays
   const [selectedPool, setSelectedPool] = useState<string[]>([]);
-  const [rollFromFavs, setRollFromFavs] = useState(false);
+  const [rollFavsInSnippet, setRollFavsInSnippet] = useState(false);
   const [tint, setTint] = useState(false);
   const [dim, setDim] = useState(false);
   const [vignette, setVignette] = useState(false);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
 
-  // Favorites in LocalStorage
+  // Favorites stored in LocalStorage
   const [favorites, setFavorites] = useState<string[]>([]);
   useEffect(() => {
     try {
@@ -168,7 +167,7 @@ export default function BannerStudio() {
   const allItems: BannerItem[] = useMemo(() => manifestData.items as BannerItem[], []);
   const allCategories: Category[] = useMemo(() => manifestData.categories as Category[], []);
 
-  // Preload catalog covers into memory
+  // Preload catalog covers into browser cache
   useEffect(() => {
     const preloadBatch = allItems.slice(0, 40);
     preloadBatch.forEach((item) => {
@@ -205,11 +204,6 @@ export default function BannerStudio() {
       setSelectedPool(qPool.split(",").filter(Boolean));
     }
 
-    const qFavs = urlParams.get("favs");
-    if (qFavs) {
-      setRollFromFavs(true);
-    }
-
     const qId = urlParams.get("id");
     if (qId) {
       setPinnedId(qId);
@@ -233,12 +227,8 @@ export default function BannerStudio() {
 
     if (pinnedId) {
       params.set("id", pinnedId);
-    } else {
-      if (rollFromFavs && favorites.length > 0) {
-        params.set("favs", favorites.join(","));
-      } else if (selectedPool.length > 0) {
-        params.set("pool", selectedPool.join(","));
-      }
+    } else if (selectedPool.length > 0) {
+      params.set("pool", selectedPool.join(","));
     }
 
     if (crop !== "attention") {
@@ -251,7 +241,7 @@ export default function BannerStudio() {
     const qs = params.toString();
     const newPath = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
     window.history.replaceState(null, "", newPath);
-  }, [preset, customW, customH, pinnedId, selectedPool, rollFromFavs, favorites, crop, tint, vignette]);
+  }, [preset, customW, customH, pinnedId, selectedPool, crop, tint, vignette]);
 
   // Fetch real GitHub Profile and actual README
   const fetchGitHubUser = useCallback(async (username: string) => {
@@ -314,7 +304,7 @@ export default function BannerStudio() {
         setRealReadme("");
       }
 
-      // Auto-Detect User Tech Stack from Repos (does NOT auto-select, button appears)
+      // Auto-Detect User Tech Stack from Repositories
       try {
         const reposRes = await fetch(
           `https://api.github.com/users/${encodeURIComponent(cleanUser)}/repos?sort=updated&per_page=30`
@@ -367,7 +357,7 @@ export default function BannerStudio() {
     fetchGitHubUser("carbonthecoder");
   }, [fetchGitHubUser]);
 
-  // Compute live banner API URL
+  // Studio live preview API URL (includes seed for live interactive rerolling)
   const bannerApiUrl = useMemo(() => {
     const params = new URLSearchParams();
 
@@ -383,7 +373,39 @@ export default function BannerStudio() {
     } else {
       params.set("seed", seed.toString());
 
-      if (rollFromFavs && favorites.length > 0) {
+      if (selectedPool.length > 0) {
+        params.set("pool", selectedPool.join(","));
+      }
+    }
+
+    if (crop !== "attention") {
+      params.set("crop", crop);
+    }
+
+    if (tint) params.set("tint", "true");
+    if (dim) params.set("dim", "true");
+    if (vignette) params.set("vignette", "true");
+
+    const qs = params.toString();
+    return `/api/banner${qs ? `?${qs}` : ""}`;
+  }, [preset, customW, customH, pinnedId, seed, selectedPool, crop, tint, dim, vignette]);
+
+  // Clean, short embed URL for README and API Endpoint (NO seed parameter!)
+  const cleanEmbedUrl = useMemo(() => {
+    const origin = "https://banners.carbon.is-a.dev";
+    const params = new URLSearchParams();
+
+    if (preset === "custom") {
+      params.set("w", customW.toString());
+      params.set("h", customH.toString());
+    } else if (preset !== "github") {
+      params.set("preset", preset);
+    }
+
+    if (pinnedId) {
+      params.set("id", pinnedId);
+    } else {
+      if (rollFavsInSnippet && favorites.length > 0) {
         params.set("favs", favorites.join(","));
       } else if (selectedPool.length > 0) {
         params.set("pool", selectedPool.join(","));
@@ -399,13 +421,8 @@ export default function BannerStudio() {
     if (vignette) params.set("vignette", "true");
 
     const qs = params.toString();
-    return `/api/banner${qs ? `?${qs}` : ""}`;
-  }, [preset, customW, customH, pinnedId, seed, rollFromFavs, favorites, selectedPool, crop, tint, dim, vignette]);
-
-  const fullProductionUrl = useMemo(() => {
-    const origin = "https://banners.carbon.is-a.dev";
-    return `${origin}${bannerApiUrl}`;
-  }, [bannerApiUrl]);
+    return `${origin}/api/banner${qs ? `?${qs}` : ""}`;
+  }, [preset, customW, customH, pinnedId, rollFavsInSnippet, favorites, selectedPool, crop, tint, dim, vignette]);
 
   // Sync metadata from response headers
   useEffect(() => {
@@ -438,8 +455,17 @@ export default function BannerStudio() {
     setSeed(Math.floor(Math.random() * 1000000));
   }, []);
 
+  const resetAllToDefault = useCallback(() => {
+    setCrop("attention");
+    setPreset("github");
+    setCustomW(1844);
+    setCustomH(999);
+    setTint(false);
+    setDim(false);
+    setVignette(false);
+  }, []);
+
   const toggleTopicInPool = (topic: string) => {
-    setRollFromFavs(false);
     setSelectedPool((prev) => {
       if (prev.includes(topic)) {
         return prev.filter((t) => t !== topic);
@@ -496,15 +522,24 @@ export default function BannerStudio() {
     return filteredCatalog.slice(start, start + itemsPerPage);
   }, [filteredCatalog, catalogPage]);
 
-  // Dynamic Aspect Ratio for canvas container
+  // Exact Aspect Ratio matching active preset dimensions
   const activeAspectRatio = useMemo(() => {
     return `${customW} / ${customH}`;
   }, [customW, customH]);
 
   // Clean Markdown & HTML Snippets
   const userHandle = ghProfile.login || "carbonthecoder";
-  const markdownSnippet = `[![Banner](${fullProductionUrl})](https://github.com/${userHandle})`;
-  const htmlSnippet = `<a href="https://github.com/${userHandle}">\n  <img src="${fullProductionUrl}" width="100%" alt="Anime Programming Banner" />\n</a>`;
+  const markdownSnippet = `[![Banner](${cleanEmbedUrl})](https://github.com/${userHandle})`;
+  const htmlSnippet = `<a href="https://github.com/${userHandle}">\n  <img src="${cleanEmbedUrl}" width="100%" alt="Anime Programming Banner" />\n</a>`;
+
+  const isCustomizedFromDefault =
+    crop !== "attention" ||
+    preset !== "github" ||
+    customW !== 1844 ||
+    customH !== 999 ||
+    tint ||
+    dim ||
+    vignette;
 
   return (
     <div
@@ -584,7 +619,7 @@ export default function BannerStudio() {
 
       {/* Main Viewport */}
       {viewMode === "catalog" ? (
-        /* Preloaded Fast Catalog Explorer */
+        /* Fast Catalog Explorer */
         <section className="space-y-6">
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
             <div className="relative flex-1">
@@ -787,13 +822,13 @@ export default function BannerStudio() {
 
           {/* Viewport Stages */}
           {viewMode === "canvas" ? (
-            /* Clean Full-Bleed Banner Canvas (Dynamic Aspect Ratio matching active preset) */
+            /* Clean Full-Bleed Banner Canvas in Exact Aspect Ratio */
             <div className="relative overflow-hidden rounded-2xl border border-[#232632] bg-[#0d0e12] shadow-2xl">
               <div
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
                 style={{ aspectRatio: activeAspectRatio }}
-                className="relative w-full max-h-[580px] overflow-hidden bg-[#0d0e12] flex items-center justify-center select-none"
+                className="relative w-full overflow-hidden bg-[#0d0e12] flex items-center justify-center select-none"
               >
                 {/* Shiny Left-to-Right Shimmer Sweep while loading */}
                 {isLoading && (
@@ -816,17 +851,30 @@ export default function BannerStudio() {
                 </div>
               </div>
 
-              {/* Banner Footer Info */}
-              <div className="flex items-center justify-between border-t border-[#232632] bg-[#15171e] px-4 py-3">
-                <div className="min-w-0 flex-1">
+              {/* Banner Footer Info: Category, Title & Direct Source Link (Image 5) */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-[#232632] bg-[#15171e] px-4 py-3">
+                <div className="min-w-0 flex-1 space-y-0.5">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs font-bold text-pink-400">{currentMeta.category}</span>
                     <span className="text-[#8b90a0]">·</span>
-                    <span className="font-mono text-xs text-[#e8e9ed] truncate">{currentMeta.title}</span>
+                    <span className="font-mono text-xs text-[#e8e9ed] font-medium truncate">{currentMeta.title}</span>
                   </div>
+                  {currentMeta.source && (
+                    <a
+                      href={`https://github.com/cat-milk/Anime-Girls-Holding-Programming-Books/blob/master/${encodeURI(currentMeta.source)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-[11px] text-[#8b90a0] hover:text-pink-400 hover:underline flex items-center gap-1.5 truncate transition-colors"
+                      title="View source image on GitHub"
+                    >
+                      <Github className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{currentMeta.source}</span>
+                      <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-70" />
+                    </a>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {/* Favorite Button */}
                   <button
                     onClick={() => {
@@ -876,7 +924,7 @@ export default function BannerStudio() {
               </div>
             </div>
           ) : viewMode === "github-desktop" ? (
-            /* Real GitHub Desktop Profile Mockup with Real README Content */
+            /* Real GitHub Desktop Profile Mockup */
             <div
               className={`rounded-2xl border transition-colors font-sans overflow-hidden shadow-2xl ${
                 githubTheme === "dark"
@@ -1069,7 +1117,7 @@ export default function BannerStudio() {
             </div>
           )}
 
-          {/* Quick Action Control Bar (Reroll, Fav Roll & Presets) */}
+          {/* Quick Action Control Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 bg-[#15171e] border border-[#232632] p-3 rounded-2xl">
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -1079,25 +1127,6 @@ export default function BannerStudio() {
                 <RotateCcw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
                 <span>Reroll Banner</span>
               </button>
-
-              {/* Roll from Favorites Toggle */}
-              {favorites.length > 0 && (
-                <button
-                  onClick={() => {
-                    setPinnedId(null);
-                    setRollFromFavs((prev) => !prev);
-                  }}
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 font-mono text-xs transition-colors cursor-pointer border ${
-                    rollFromFavs
-                      ? "bg-rose-500 text-white font-bold border-rose-400 shadow-md shadow-rose-500/30"
-                      : "bg-[#0d0e12] text-rose-300 border-rose-500/30 hover:border-rose-400"
-                  }`}
-                  title="Cycle solely through your favorited banners"
-                >
-                  <Heart className={`h-3.5 w-3.5 ${rollFromFavs ? "fill-white" : "fill-rose-400"}`} />
-                  <span>{rollFromFavs ? `Rolling Favs (${favorites.length})` : `Roll Favs (${favorites.length})`}</span>
-                </button>
-              )}
 
               {/* Presets List */}
               <div className="flex flex-wrap items-center gap-1 rounded-xl bg-[#0d0e12] p-1 border border-[#232632]">
@@ -1192,19 +1221,15 @@ export default function BannerStudio() {
                 </div>
               </div>
 
-              {/* Smart Attention Crop Selector with Reset-to-Default */}
+              {/* Attention Crop Selector with Working Reset-to-Default */}
               <div className="rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632] space-y-2">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-xs text-[#e8e9ed] font-medium">Attention Crop:</span>
-                    <span className="font-mono text-[10px] text-pink-400 bg-pink-500/10 px-1.5 py-0.2 rounded border border-pink-500/20">
-                      Smart AI Focus
-                    </span>
-                  </div>
-                  {crop !== "attention" && (
+                  <span className="font-mono text-xs text-[#e8e9ed] font-medium">Attention Crop:</span>
+                  {isCustomizedFromDefault && (
                     <button
-                      onClick={() => setCrop("attention")}
+                      onClick={resetAllToDefault}
                       className="flex items-center gap-1 font-mono text-[10px] text-pink-400 hover:underline cursor-pointer"
+                      title="Reset crop and dimensions to default GitHub banner"
                     >
                       <Undo2 className="h-2.5 w-2.5" />
                       <span>Reset to default</span>
@@ -1259,53 +1284,55 @@ export default function BannerStudio() {
                   <Sparkles className="h-3.5 w-3.5 text-pink-400" />
                   <span>Rotation Pool (Multi-Select)</span>
                 </div>
-                {rollFromFavs ? (
-                  <span className="font-mono text-[11px] text-rose-300">
-                    Active: {favorites.length} Saved Favs
-                  </span>
-                ) : selectedPool.length > 0 ? (
+                {selectedPool.length > 0 && (
                   <button
                     onClick={() => setSelectedPool([])}
                     className="font-mono text-[11px] text-pink-400 hover:underline cursor-pointer"
                   >
                     Clear pool ({selectedPool.length})
                   </button>
-                ) : null}
+                )}
               </div>
 
-              {/* Roll from Favorites notice */}
-              {rollFromFavs && (
-                <div className="flex items-center justify-between rounded-xl bg-rose-500/15 border border-rose-500/30 p-2.5 font-mono text-xs text-rose-200">
-                  <div className="flex items-center gap-2">
-                    <Heart className="h-4 w-4 fill-rose-400 text-rose-400" />
-                    <span>Rolling exclusively from your {favorites.length} favorited covers.</span>
-                  </div>
-                  <button
-                    onClick={() => setRollFromFavs(false)}
-                    className="text-[11px] text-white underline cursor-pointer"
-                  >
-                    Switch to all
-                  </button>
+              {/* Enter GitHub username to get stack input (Image 3) */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632]">
+                <div className="flex items-center gap-2 flex-1">
+                  <Github className="h-3.5 w-3.5 text-pink-400 shrink-0" />
+                  <span className="font-mono text-xs text-[#8b90a0]">@</span>
+                  <input
+                    type="text"
+                    placeholder="Enter GitHub username to get your stack..."
+                    value={ghInput}
+                    onChange={(e) => setGhInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") fetchGitHubUser(ghInput);
+                    }}
+                    className="w-full bg-transparent font-mono text-xs text-[#e8e9ed] focus:outline-none placeholder:text-[#555a68]"
+                  />
                 </div>
-              )}
+                <button
+                  onClick={() => fetchGitHubUser(ghInput)}
+                  disabled={isFetchingGh}
+                  className="rounded-lg bg-[#232632] hover:bg-pink-500 hover:text-white px-3 py-1 font-mono text-xs text-[#e8e9ed] transition-colors cursor-pointer shrink-0"
+                >
+                  {isFetchingGh ? "Detecting..." : "Get Stack"}
+                </button>
+              </div>
 
               {/* Auto-detected badge info with apply button */}
-              {autoDetectedLangs.length > 0 && !rollFromFavs && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-pink-500/10 border border-pink-500/25 p-2.5 font-mono text-xs">
+              {autoDetectedLangs.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-pink-500/10 border border-pink-500/25 p-2 font-mono text-xs">
                   <div className="flex items-center gap-1.5 text-pink-300">
-                    <Cpu className="h-3.5 w-3.5 text-pink-400" />
+                    <Cpu className="h-3.5 w-3.5 text-pink-400 shrink-0" />
                     <span>
-                      Detected stack for @{ghProfile.login}: <strong className="text-white">{autoDetectedLangs.join(", ")}</strong>
+                      Detected stack: <strong className="text-white">{autoDetectedLangs.join(", ")}</strong>
                     </span>
                   </div>
                   <button
-                    onClick={() => {
-                      setRollFromFavs(false);
-                      setSelectedPool(autoDetectedLangs);
-                    }}
+                    onClick={() => setSelectedPool(autoDetectedLangs)}
                     className="rounded-lg bg-pink-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-pink-600 transition-colors cursor-pointer"
                   >
-                    Select Detected Stack
+                    Apply Stack to Pool
                   </button>
                 </div>
               )}
@@ -1316,7 +1343,7 @@ export default function BannerStudio() {
 
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {POPULAR_TOPICS.map((topic) => {
-                  const isActive = !rollFromFavs && selectedPool.includes(topic);
+                  const isActive = selectedPool.includes(topic);
                   return (
                     <button
                       key={topic}
@@ -1335,16 +1362,30 @@ export default function BannerStudio() {
             </div>
           </div>
 
-          {/* Setup Guide & Feature Clarification */}
+          {/* Setup Guide (Clean, Short link, and roll my favs snippet option) */}
           <div className="rounded-2xl border border-[#232632] bg-[#15171e] p-5 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#232632] pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#232632] pb-3">
               <div>
                 <h3 className="font-mono text-sm font-bold text-[#e8e9ed]">How to add to your GitHub Profile</h3>
                 <p className="font-mono text-xs text-[#8b90a0] mt-0.5">
                   Paste this snippet at line 1 in your profile repository <code className="text-pink-300">README.md</code>.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+
+              <div className="flex flex-wrap items-center gap-2">
+                {favorites.length > 0 && (
+                  <label className="flex items-center gap-1.5 rounded-lg bg-[#0d0e12] px-2.5 py-1.5 font-mono text-xs border border-rose-500/30 text-rose-300 cursor-pointer hover:border-rose-500/60 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={rollFavsInSnippet}
+                      onChange={(e) => setRollFavsInSnippet(e.target.checked)}
+                      className="accent-rose-500 h-3.5 w-3.5 rounded"
+                    />
+                    <Heart className="h-3 w-3 fill-rose-400" />
+                    <span>Roll My Favs ({favorites.length})</span>
+                  </label>
+                )}
+
                 <button
                   onClick={() => copyToClipboard(markdownSnippet, "markdown")}
                   className="rounded-lg bg-pink-500 px-3 py-1.5 font-mono text-xs font-bold text-white hover:bg-pink-600 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
@@ -1367,36 +1408,13 @@ export default function BannerStudio() {
               </pre>
             </div>
 
-            {/* Feature Guide Callouts: Pin & Attention Crop */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div className="flex items-start gap-2.5 rounded-xl bg-[#0d0e12] p-3 border border-[#232632] font-mono text-xs">
-                <Pin className="h-4 w-4 text-pink-400 mt-0.5 shrink-0" />
-                <div>
-                  <strong className="text-[#e8e9ed]">Pin Button:</strong>
-                  <p className="text-[#8b90a0] text-[11px] mt-0.5">
-                    Locks this specific cover with a permanent link (<code className="text-pink-300">?id=...</code>) instead of random rotation.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2.5 rounded-xl bg-[#0d0e12] p-3 border border-[#232632] font-mono text-xs">
-                <Sparkles className="h-4 w-4 text-pink-400 mt-0.5 shrink-0" />
-                <div>
-                  <strong className="text-[#e8e9ed]">Attention Crop:</strong>
-                  <p className="text-[#8b90a0] text-[11px] mt-0.5">
-                    Sharp edge-detection automatically centers on the anime character and book cover rather than cutting off heads.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between font-mono text-xs text-[#8b90a0] pt-2 border-t border-[#232632]">
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between font-mono text-xs text-[#8b90a0] pt-1">
               <div className="truncate">
-                Raw Endpoint: <span className="text-pink-300 select-all">{fullProductionUrl}</span>
+                Raw Endpoint: <span className="text-pink-300 select-all">{cleanEmbedUrl}</span>
               </div>
               <button
-                onClick={() => copyToClipboard(fullProductionUrl, "raw")}
-                className="text-pink-400 hover:underline text-left sm:text-right cursor-pointer"
+                onClick={() => copyToClipboard(cleanEmbedUrl, "raw")}
+                className="text-pink-400 hover:underline text-left sm:text-right cursor-pointer shrink-0"
               >
                 {copiedFormat === "raw" ? "Copied URL!" : "Copy Raw Image URL"}
               </button>
@@ -1418,8 +1436,8 @@ export default function BannerStudio() {
             cat-milk/Anime-Girls-Holding-Programming-Books
           </a>
         </div>
-        <div>
-          crafted for <span className="text-pink-400 font-bold">banners.carbon.is-a.dev</span>
+        <div className="text-[#555a68]">
+          MIT License · 853 covers
         </div>
       </footer>
     </div>
