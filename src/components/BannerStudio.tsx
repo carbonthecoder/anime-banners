@@ -14,12 +14,11 @@ import {
   Github,
   Monitor,
   Smartphone,
-  User,
   SlidersHorizontal,
-  Layers,
   ChevronLeft,
   ChevronRight,
-  ShieldAlert,
+  ZoomIn,
+  RotateCw,
 } from "lucide-react";
 import manifestData from "@/data/banner_manifest.json";
 
@@ -54,7 +53,9 @@ const PRESETS = [
   { id: "github", label: "GitHub Banner", width: 1844, height: 999, ratio: "1.85:1" },
   { id: "github-compact", label: "GitHub Compact", width: 1200, height: 400, ratio: "3:1" },
   { id: "twitter", label: "Twitter / X", width: 1500, height: 500, ratio: "3:1" },
-  { id: "discord", label: "Discord", width: 1920, height: 1080, ratio: "16:9" },
+  { id: "discord", label: "Discord Profile", width: 680, height: 240, ratio: "2.83:1" },
+  { id: "discord-server", label: "Discord Server", width: 960, height: 540, ratio: "16:9" },
+  { id: "custom", label: "Custom Size", width: 1600, height: 800, ratio: "Custom" },
 ];
 
 const POPULAR_TOPICS = [
@@ -79,30 +80,36 @@ const POPULAR_TOPICS = [
 ];
 
 export default function BannerStudio() {
-  // Banner config
+  // Preset & Dimensions
   const [preset, setPreset] = useState("github");
-  const [selectedPool, setSelectedPool] = useState<string[]>([]);
+  const [customW, setCustomW] = useState(1844);
+  const [customH, setCustomH] = useState(999);
+
+  // Framing, Crop, Zoom & Rotation
+  const [zoom, setZoom] = useState(80); // Default 75-80% zoom so both head and book are visible
+  const [rotation, setRotation] = useState(0);
   const [crop, setCrop] = useState<"attention" | "center" | "entropy" | "top">("attention");
-  const [badge, setBadge] = useState(true);
-  const [customUser, setCustomUser] = useState("carbonthecoder");
+
+  // Overlays
+  const [selectedPool, setSelectedPool] = useState<string[]>([]);
   const [tint, setTint] = useState(true);
   const [dim, setDim] = useState(false);
   const [vignette, setVignette] = useState(false);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
 
-  // App & view state
+  // App & View State
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1000000));
   const [isLoading, setIsLoading] = useState(true);
   const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"canvas" | "github-desktop" | "github-mobile" | "catalog">("canvas");
 
-  // GitHub user profile fetcher
+  // GitHub user profile state (only used in GitHub Profile mockups)
   const [ghInput, setGhInput] = useState("carbonthecoder");
   const [ghProfile, setGhProfile] = useState<GitHubProfile>({
     login: "carbonthecoder",
     name: "Carbon",
     avatar_url: "https://avatars.githubusercontent.com/carbonthecoder",
-    bio: "Building minimalist developer tools, creative systems, and fast web experiences.",
+    bio: "10000 | obsessed with building things from scratch.",
     followers: 128,
     following: 42,
     public_repos: 18,
@@ -125,20 +132,29 @@ export default function BannerStudio() {
     source: "Rust/Shikanoko-The-Rust-Programming-Language.png",
   });
 
-  // Catalog search & pagination
+  // Catalog state
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCatalogCat, setSelectedCatalogCat] = useState("All");
   const [catalogPage, setCatalogPage] = useState(1);
   const itemsPerPage = 16;
 
-  // Touch swipe support for mobile
+  // Touch swipe support
   const touchStartX = useRef<number | null>(null);
 
   // Manifest access
   const allItems: BannerItem[] = useMemo(() => manifestData.items as BannerItem[], []);
   const allCategories: Category[] = useMemo(() => manifestData.categories as Category[], []);
 
-  // Fetch GitHub Profile
+  // Preload catalog images on mount for instant browsing
+  useEffect(() => {
+    const preloadBatch = allItems.slice(0, 36);
+    preloadBatch.forEach((item) => {
+      const img = new Image();
+      img.src = item.cdn_url;
+    });
+  }, [allItems]);
+
+  // Fetch GitHub profile for the mockup
   const fetchGitHubUser = useCallback(async (username: string) => {
     const cleanUser = username.trim().replace(/^@/, "");
     if (!cleanUser) return;
@@ -151,7 +167,7 @@ export default function BannerStudio() {
           login: data.login,
           name: data.name || data.login,
           avatar_url: data.avatar_url || `https://avatars.githubusercontent.com/${cleanUser}`,
-          bio: data.bio || "Developer building things on GitHub.",
+          bio: data.bio || "10000 | obsessed with building things from scratch.",
           followers: data.followers || 0,
           following: data.following || 0,
           public_repos: data.public_repos || 0,
@@ -159,36 +175,34 @@ export default function BannerStudio() {
           company: data.company || null,
           blog: data.blog || null,
         });
-        setCustomUser(cleanUser);
       } else {
-        // Fallback for rate-limited requests
         setGhProfile((prev) => ({
           ...prev,
           login: cleanUser,
           name: cleanUser,
           avatar_url: `https://avatars.githubusercontent.com/${cleanUser}`,
         }));
-        setCustomUser(cleanUser);
       }
     } catch {
-      // Offline fallback
       setGhProfile((prev) => ({
         ...prev,
         login: cleanUser,
         name: cleanUser,
         avatar_url: `https://avatars.githubusercontent.com/${cleanUser}`,
       }));
-      setCustomUser(cleanUser);
     } finally {
       setIsFetchingGh(false);
     }
   }, []);
 
-  // Compute active banner API URL
+  // Build the live API query URL
   const bannerApiUrl = useMemo(() => {
     const params = new URLSearchParams();
 
-    if (preset !== "github") {
+    if (preset === "custom") {
+      params.set("w", customW.toString());
+      params.set("h", customH.toString());
+    } else if (preset !== "github") {
       params.set("preset", preset);
     }
 
@@ -202,15 +216,16 @@ export default function BannerStudio() {
       }
     }
 
-    if (crop !== "attention") {
-      params.set("crop", crop);
+    if (zoom !== 80) {
+      params.set("zoom", zoom.toString());
     }
 
-    if (badge) {
-      params.set("badge", "true");
-      if (customUser.trim()) {
-        params.set("user", customUser.trim());
-      }
+    if (rotation !== 0) {
+      params.set("rotate", rotation.toString());
+    }
+
+    if (crop !== "attention") {
+      params.set("crop", crop);
     }
 
     if (tint) params.set("tint", "true");
@@ -219,15 +234,14 @@ export default function BannerStudio() {
 
     const qs = params.toString();
     return `/api/banner${qs ? `?${qs}` : ""}`;
-  }, [preset, pinnedId, seed, selectedPool, crop, badge, customUser, tint, dim, vignette]);
+  }, [preset, customW, customH, pinnedId, seed, selectedPool, zoom, rotation, crop, tint, dim, vignette]);
 
-  // Production full embed URL
   const fullProductionUrl = useMemo(() => {
     const origin = "https://banners.carbon.is-a.dev";
     return `${origin}${bannerApiUrl}`;
   }, [bannerApiUrl]);
 
-  // Read response headers to sync metadata
+  // Read response headers to keep metadata in sync
   useEffect(() => {
     let isCancelled = false;
     setIsLoading(true);
@@ -243,9 +257,7 @@ export default function BannerStudio() {
           setCurrentMeta({ id, category: cat, title, source });
         }
       })
-      .catch(() => {
-        // Fallback gracefully
-      })
+      .catch(() => {})
       .finally(() => {
         if (!isCancelled) setIsLoading(false);
       });
@@ -255,7 +267,7 @@ export default function BannerStudio() {
     };
   }, [bannerApiUrl]);
 
-  // Keyboard navigation: Space or R to reroll
+  // Space / R key to shuffle
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -275,13 +287,11 @@ export default function BannerStudio() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Reroll action
   const reroll = useCallback(() => {
     setPinnedId(null);
     setSeed(Math.floor(Math.random() * 1000000));
   }, []);
 
-  // Pool toggle
   const toggleTopicInPool = (topic: string) => {
     setSelectedPool((prev) => {
       if (prev.includes(topic)) {
@@ -292,14 +302,13 @@ export default function BannerStudio() {
     });
   };
 
-  // Copy helper
   const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
     setCopiedFormat(type);
     setTimeout(() => setCopiedFormat(null), 2000);
   };
 
-  // Touch swipe handling
+  // Touch swipes
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
   };
@@ -314,7 +323,7 @@ export default function BannerStudio() {
     touchStartX.current = null;
   };
 
-  // Filtered catalog
+  // Catalog search & pagination
   const filteredCatalog = useMemo(() => {
     return allItems.filter((item) => {
       const matchCat =
@@ -334,33 +343,32 @@ export default function BannerStudio() {
     return filteredCatalog.slice(start, start + itemsPerPage);
   }, [filteredCatalog, catalogPage]);
 
-  // Markdown embed snippet
-  const markdownSnippet = useMemo(() => {
-    const handle = customUser.trim() || "carbonthecoder";
-    return `<a href="https://github.com/${handle}">\n  <img src="${fullProductionUrl}" width="100%" alt="Anime Programming Banner" />\n</a>`;
-  }, [customUser, fullProductionUrl]);
+  // Clean, minimal markdown snippet (no messy extra attributes)
+  const userHandle = ghProfile.login || "carbonthecoder";
+  const markdownSnippet = `[![Banner](${fullProductionUrl})](https://github.com/${userHandle})`;
+  const htmlSnippet = `<a href="https://github.com/${userHandle}">\n  <img src="${fullProductionUrl}" width="100%" alt="Anime Programming Banner" />\n</a>`;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
-      {/* Top Header */}
+      {/* Top Header (Clean Title & Lead from Image 3 request) */}
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#232632] pb-5">
         <div>
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-pink-400 shadow-[0_0_8px_#f472b6]"></span>
+            <span className="h-2.5 w-2.5 rounded-full bg-pink-400 shadow-[0_0_8px_#f472b6]"></span>
             <h1 className="font-mono text-xl sm:text-2xl font-bold tracking-tight text-[#e8e9ed]">
-              anime-banners
+              banners.carbon
             </h1>
             <span className="rounded-full bg-pink-500/10 px-2.5 py-0.5 font-mono text-[11px] text-pink-400 border border-pink-500/20">
-              853 books
+              853 covers
             </span>
           </div>
           <p className="mt-1 font-mono text-xs text-[#8b90a0]">
-            Dynamic GitHub profile banners cropped with intelligent edge attention.
+            Auto-rotating anime programming banners for your GitHub README. One line of markdown, a fresh cover every visit.
           </p>
         </div>
 
-        {/* View Mode Tabs */}
-        <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-[#15171e] p-1 border border-[#232632]">
+        {/* View Mode Navigation */}
+        <div className="flex flex-wrap items-center gap-1 rounded-xl bg-[#15171e] p-1 border border-[#232632]">
           <button
             onClick={() => setViewMode("canvas")}
             className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs transition-colors ${
@@ -407,9 +415,9 @@ export default function BannerStudio() {
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Main Viewport Content */}
       {viewMode === "catalog" ? (
-        /* Catalog Explorer Tab */
+        /* Preloaded Fast Catalog Explorer */
         <section className="space-y-6">
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
             <div className="relative flex-1">
@@ -459,7 +467,6 @@ export default function BannerStudio() {
             </div>
           </div>
 
-          {/* Grid of covers */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {paginatedCatalog.map((item) => (
               <div
@@ -475,7 +482,7 @@ export default function BannerStudio() {
                   <img
                     src={item.cdn_url}
                     alt={item.title}
-                    loading="lazy"
+                    loading="eager"
                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                 </div>
@@ -487,7 +494,6 @@ export default function BannerStudio() {
             ))}
           </div>
 
-          {/* Pagination */}
           <div className="flex items-center justify-between border-t border-[#232632] pt-4 font-mono text-xs">
             <span className="text-[#8b90a0]">
               Page {catalogPage} of {Math.max(1, totalPages)} ({filteredCatalog.length} covers)
@@ -511,43 +517,45 @@ export default function BannerStudio() {
           </div>
         </section>
       ) : (
-        /* Studio Stage: Banner Canvas or Ditto GitHub Profile Mockup */
+        /* Studio Stage */
         <div className="space-y-6">
-          {/* GitHub Username Input Bar (Visible when in profile mode or customizable) */}
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between bg-[#15171e] border border-[#232632] p-3 rounded-2xl">
-            <div className="flex items-center gap-2">
-              <Github className="h-4 w-4 text-pink-400" />
-              <span className="font-mono text-xs text-[#e8e9ed] font-medium">GitHub Profile:</span>
-              <div className="relative">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 font-mono text-xs text-[#8b90a0]">@</span>
-                <input
-                  type="text"
-                  value={ghInput}
-                  onChange={(e) => setGhInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") fetchGitHubUser(ghInput);
-                  }}
-                  className="rounded-lg bg-[#0d0e12] pl-6 pr-3 py-1 font-mono text-xs text-[#e8e9ed] border border-[#232632] focus:outline-none focus:border-pink-500/60 w-36 sm:w-44"
-                />
+          {/* GitHub Username Input Bar: ONLY shown when in Profile Preview modes */}
+          {(viewMode === "github-desktop" || viewMode === "github-mobile") && (
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between bg-[#15171e] border border-[#232632] p-3 rounded-2xl">
+              <div className="flex items-center gap-2">
+                <Github className="h-4 w-4 text-pink-400" />
+                <span className="font-mono text-xs text-[#e8e9ed] font-medium">Preview with Profile:</span>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 font-mono text-xs text-[#8b90a0]">@</span>
+                  <input
+                    type="text"
+                    value={ghInput}
+                    onChange={(e) => setGhInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") fetchGitHubUser(ghInput);
+                    }}
+                    placeholder="username"
+                    className="rounded-lg bg-[#0d0e12] pl-6 pr-3 py-1 font-mono text-xs text-[#e8e9ed] border border-[#232632] focus:outline-none focus:border-pink-500/60 w-36 sm:w-44"
+                  />
+                </div>
+                <button
+                  onClick={() => fetchGitHubUser(ghInput)}
+                  disabled={isFetchingGh}
+                  className="rounded-lg bg-[#232632] px-3 py-1 font-mono text-xs text-[#e8e9ed] hover:bg-pink-500 hover:text-white transition-colors"
+                >
+                  {isFetchingGh ? "..." : "Fetch"}
+                </button>
               </div>
-              <button
-                onClick={() => fetchGitHubUser(ghInput)}
-                disabled={isFetchingGh}
-                className="rounded-lg bg-[#232632] px-3 py-1 font-mono text-xs text-[#e8e9ed] hover:bg-pink-500 hover:text-white transition-colors"
-              >
-                {isFetchingGh ? "..." : "Fetch"}
-              </button>
-            </div>
 
-            <div className="flex items-center gap-2 font-mono text-xs text-[#8b90a0]">
-              <span>Badge Tag:</span>
-              <span className="text-pink-300 font-bold">@{customUser}</span>
+              <div className="font-mono text-xs text-[#8b90a0]">
+                Simulating profile: <span className="text-pink-300 font-bold">@{ghProfile.login}</span>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Stage Viewports */}
+          {/* Viewport Stages */}
           {viewMode === "canvas" ? (
-            /* Pure Banner Stage */
+            /* Clean Banner Stage (No username bar above it!) */
             <div className="relative overflow-hidden rounded-2xl border border-[#232632] bg-[#0d0e12] shadow-2xl">
               <div
                 onTouchStart={handleTouchStart}
@@ -569,7 +577,6 @@ export default function BannerStudio() {
                   onLoad={() => setIsLoading(false)}
                 />
 
-                {/* Mobile Touch Hint Pill */}
                 <div className="absolute top-3 right-3 sm:hidden rounded-full bg-black/60 backdrop-blur-md px-2.5 py-0.5 font-mono text-[10px] text-pink-300 border border-white/10">
                   Swipe to shuffle
                 </div>
@@ -612,9 +619,9 @@ export default function BannerStudio() {
               </div>
             </div>
           ) : viewMode === "github-desktop" ? (
-            /* Ditto Exact GitHub Desktop Profile Mockup */
+            /* Ditto Exact Real GitHub Desktop Profile Mockup */
             <div className="rounded-2xl border border-[#30363d] bg-[#0d1117] text-[#f0f6fc] font-sans overflow-hidden shadow-2xl">
-              {/* Fake GitHub Navigation Bar */}
+              {/* GitHub Top Nav Bar */}
               <div className="border-b border-[#30363d] bg-[#161b22] px-4 py-3 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-3">
                   <Github className="h-5 w-5 text-white" />
@@ -631,9 +638,8 @@ export default function BannerStudio() {
                 </div>
               </div>
 
-              {/* Profile Body: Left Column Avatar + Right Column README */}
+              {/* GitHub Profile Grid: Left User Rail + Right README Box */}
               <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
-                {/* Left Profile Card */}
                 <div className="md:col-span-4 flex flex-col items-center md:items-start text-center md:text-left">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -656,10 +662,8 @@ export default function BannerStudio() {
                   </div>
                 </div>
 
-                {/* Right Column: Exact GitHub README Card */}
                 <div className="md:col-span-8">
                   <div className="rounded-lg border border-[#30363d] bg-[#0d1117] overflow-hidden">
-                    {/* GitHub README Header */}
                     <div className="flex items-center justify-between border-b border-[#30363d] bg-[#161b22] px-4 py-2 text-xs text-[#8d96a0]">
                       <div className="flex items-center gap-2 font-mono">
                         <BookOpen className="h-3.5 w-3.5 text-pink-400" />
@@ -670,9 +674,8 @@ export default function BannerStudio() {
                       </div>
                     </div>
 
-                    {/* README Markdown Contents */}
                     <div className="p-4 sm:p-6 space-y-4">
-                      {/* The Anime Banner sitting at the top of the README */}
+                      {/* Live Banner at the very top of the README for all users */}
                       <div className="overflow-hidden rounded-md border border-[#30363d]/60 shadow-sm">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -692,8 +695,12 @@ export default function BannerStudio() {
                       </div>
 
                       <div className="font-mono text-xs text-[#8d96a0] flex flex-wrap gap-2">
-                        <span className="rounded bg-[#161b22] px-2 py-1 border border-[#30363d]">🚀 Active pool: {selectedPool.length > 0 ? selectedPool.join(", ") : "All 100 Topics"}</span>
-                        <span className="rounded bg-[#161b22] px-2 py-1 border border-[#30363d]">⚡ Powered by Sharp Attention Crop</span>
+                        <span className="rounded bg-[#161b22] px-2 py-1 border border-[#30363d]">
+                          🚀 Rotation: {selectedPool.length > 0 ? selectedPool.join(", ") : "All 100 Topics"}
+                        </span>
+                        <span className="rounded bg-[#161b22] px-2 py-1 border border-[#30363d]">
+                          ⚡ Sharp Framing ({zoom}% Zoom)
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -701,16 +708,14 @@ export default function BannerStudio() {
               </div>
             </div>
           ) : (
-            /* Ditto Exact GitHub Mobile Web / App Mockup */
+            /* Ditto Exact Real GitHub Mobile Mockup */
             <div className="mx-auto max-w-sm rounded-3xl border-4 border-[#30363d] bg-[#0d1117] text-[#f0f6fc] font-sans overflow-hidden shadow-2xl">
-              {/* Mobile Notch Bar */}
               <div className="bg-[#161b22] px-4 py-2 border-b border-[#30363d] flex items-center justify-between text-[11px] text-[#8d96a0]">
                 <Github className="h-4 w-4 text-white" />
                 <span className="font-mono font-bold text-[#f0f6fc]">github.com/{ghProfile.login}</span>
                 <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
               </div>
 
-              {/* Mobile Profile Card */}
               <div className="p-4 space-y-3">
                 <div className="flex items-center gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -727,7 +732,6 @@ export default function BannerStudio() {
 
                 <p className="text-xs text-[#c9d1d9] leading-tight">{ghProfile.bio}</p>
 
-                {/* Mobile README Card */}
                 <div className="rounded-lg border border-[#30363d] bg-[#0d1117] overflow-hidden mt-3">
                   <div className="border-b border-[#30363d] bg-[#161b22] px-3 py-1.5 flex items-center justify-between text-[11px] text-[#8d96a0]">
                     <span className="font-mono">{ghProfile.login} / README.md</span>
@@ -752,31 +756,37 @@ export default function BannerStudio() {
             </div>
           )}
 
-          {/* Quick Action Control Bar (Reroll, Presets, Copy) */}
+          {/* Quick Action Control Bar (Reroll & Presets) */}
           <div className="flex flex-wrap items-center justify-between gap-3 bg-[#15171e] border border-[#232632] p-3 rounded-2xl">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={reroll}
-                className="flex items-center gap-2 rounded-xl bg-pink-500 px-4 py-2 font-mono text-xs font-bold text-white shadow-lg shadow-pink-500/25 hover:bg-pink-600 active:scale-95 transition-all"
+                className="flex items-center gap-2 rounded-xl bg-pink-500 px-4 py-2 font-mono text-xs font-bold text-white shadow-lg shadow-pink-500/25 hover:bg-pink-600 active:scale-95 transition-all cursor-pointer"
               >
                 <RotateCcw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
                 <span>Reroll Banner</span>
                 <span className="rounded bg-black/20 px-1 py-0.5 text-[10px] hidden sm:inline">R</span>
               </button>
 
-              {/* Preset Selector */}
-              <div className="flex items-center gap-1 rounded-xl bg-[#0d0e12] p-1 border border-[#232632]">
+              {/* Presets List */}
+              <div className="flex flex-wrap items-center gap-1 rounded-xl bg-[#0d0e12] p-1 border border-[#232632]">
                 {PRESETS.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => setPreset(p.id)}
+                    onClick={() => {
+                      setPreset(p.id);
+                      if (p.id !== "custom") {
+                        setCustomW(p.width);
+                        setCustomH(p.height);
+                      }
+                    }}
                     className={`rounded-lg px-2.5 py-1 font-mono text-xs transition-colors ${
                       preset === p.id
                         ? "bg-[#232632] text-[#e8e9ed] font-medium"
                         : "text-[#8b90a0] hover:text-[#e8e9ed]"
                     }`}
                   >
-                    {p.label.replace("GitHub ", "")}
+                    {p.label}
                   </button>
                 ))}
               </div>
@@ -785,18 +795,133 @@ export default function BannerStudio() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => copyToClipboard(markdownSnippet, "markdown")}
-                className="flex items-center gap-1.5 rounded-xl bg-[#232632] px-3.5 py-2 font-mono text-xs font-medium text-[#e8e9ed] hover:bg-pink-500 hover:text-white transition-colors"
+                className="flex items-center gap-1.5 rounded-xl bg-[#232632] px-3.5 py-2 font-mono text-xs font-medium text-[#e8e9ed] hover:bg-pink-500 hover:text-white transition-colors cursor-pointer"
               >
                 {copiedFormat === "markdown" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                <span>{copiedFormat === "markdown" ? "Copied Markdown!" : "Copy README Code"}</span>
+                <span>{copiedFormat === "markdown" ? "Copied!" : "Copy Markdown"}</span>
               </button>
             </div>
           </div>
 
-          {/* Controls: Multi-Language Rotation Pool & Visual Overlays */}
+          {/* Controls: Dimensions, Zoom, Rotation, Crop, Rotation Pool */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            {/* Multi-Language Pool (Col 7) */}
-            <div className="md:col-span-7 rounded-2xl border border-[#232632] bg-[#15171e] p-4 space-y-3">
+            {/* Custom Values, Zoom, Rotate & Crop (Col 6) */}
+            <div className="md:col-span-6 rounded-2xl border border-[#232632] bg-[#15171e] p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-mono text-xs font-bold text-[#e8e9ed]">
+                  <SlidersHorizontal className="h-3.5 w-3.5 text-pink-400" />
+                  <span>Framing & Custom Dimensions</span>
+                </div>
+                <span className="font-mono text-[11px] text-[#8b90a0]">
+                  {customW} × {customH}
+                </span>
+              </div>
+
+              {/* Custom W & H Inputs */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-2 rounded-xl bg-[#0d0e12] px-3 py-2 border border-[#232632]">
+                  <span className="font-mono text-xs text-[#8b90a0]">W:</span>
+                  <input
+                    type="number"
+                    min="200"
+                    max="3840"
+                    value={customW}
+                    onChange={(e) => {
+                      setCustomW(parseInt(e.target.value, 10) || 1844);
+                      setPreset("custom");
+                    }}
+                    className="w-full bg-transparent font-mono text-xs text-[#e8e9ed] focus:outline-none"
+                  />
+                  <span className="font-mono text-[10px] text-[#8b90a0]">px</span>
+                </div>
+
+                <div className="flex items-center gap-2 rounded-xl bg-[#0d0e12] px-3 py-2 border border-[#232632]">
+                  <span className="font-mono text-xs text-[#8b90a0]">H:</span>
+                  <input
+                    type="number"
+                    min="100"
+                    max="2160"
+                    value={customH}
+                    onChange={(e) => {
+                      setCustomH(parseInt(e.target.value, 10) || 999);
+                      setPreset("custom");
+                    }}
+                    className="w-full bg-transparent font-mono text-xs text-[#e8e9ed] focus:outline-none"
+                  />
+                  <span className="font-mono text-[10px] text-[#8b90a0]">px</span>
+                </div>
+              </div>
+
+              {/* Zoom & Rotation Controls */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {/* Zoom Level */}
+                <div className="rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632]">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-xs text-[#8b90a0] flex items-center gap-1">
+                      <ZoomIn className="h-3 w-3 text-pink-400" /> Zoom:
+                    </span>
+                    <span className="font-mono text-xs text-[#e8e9ed] font-bold">{zoom}%</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[75, 80, 90, 100].map((z) => (
+                      <button
+                        key={z}
+                        onClick={() => setZoom(z)}
+                        className={`flex-1 rounded py-0.5 font-mono text-[11px] transition-colors ${
+                          zoom === z ? "bg-pink-500 text-white font-bold" : "bg-[#15171e] text-[#8b90a0] hover:text-[#e8e9ed]"
+                        }`}
+                      >
+                        {z}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Rotate Angle */}
+                <div className="rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632]">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-xs text-[#8b90a0] flex items-center gap-1">
+                      <RotateCw className="h-3 w-3 text-pink-400" /> Rotate:
+                    </span>
+                    <span className="font-mono text-xs text-[#e8e9ed] font-bold">{rotation}°</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[0, 90, 180, 270].map((deg) => (
+                      <button
+                        key={deg}
+                        onClick={() => setRotation(deg)}
+                        className={`flex-1 rounded py-0.5 font-mono text-[11px] transition-colors ${
+                          rotation === deg ? "bg-pink-500 text-white font-bold" : "bg-[#15171e] text-[#8b90a0] hover:text-[#e8e9ed]"
+                        }`}
+                      >
+                        {deg}°
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Crop Mode Selector */}
+              <div className="flex items-center justify-between rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632]">
+                <span className="font-mono text-xs text-[#8b90a0]">Smart Crop Mode:</span>
+                <div className="flex gap-1">
+                  {(["attention", "entropy", "center", "top"] as const).map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setCrop(c)}
+                      className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
+                        crop === c ? "bg-pink-500 text-white font-bold" : "bg-[#15171e] text-[#8b90a0] hover:text-[#e8e9ed]"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Rotation Pool & Tint (Col 6) */}
+            <div className="md:col-span-6 rounded-2xl border border-[#232632] bg-[#15171e] p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 font-mono text-xs font-bold text-[#e8e9ed]">
                   <Sparkles className="h-3.5 w-3.5 text-pink-400" />
@@ -807,12 +932,12 @@ export default function BannerStudio() {
                     onClick={() => setSelectedPool([])}
                     className="font-mono text-[11px] text-pink-400 hover:underline"
                   >
-                    Clear pool ({selectedPool.length})
+                    Clear ({selectedPool.length})
                   </button>
                 )}
               </div>
               <p className="font-mono text-[11px] text-[#8b90a0]">
-                Select languages you want in your rotation. Leave empty to roll from all 853 books.
+                Choose languages for your pool. If none selected, rolls across all 853 covers.
               </p>
 
               <div className="flex flex-wrap gap-1.5 pt-1">
@@ -824,7 +949,7 @@ export default function BannerStudio() {
                       onClick={() => toggleTopicInPool(topic)}
                       className={`rounded-lg px-2.5 py-1 font-mono text-xs transition-all ${
                         isActive
-                          ? "bg-pink-500 text-white font-semibold shadow-xs"
+                          ? "bg-pink-500 text-white font-semibold"
                           : "bg-[#0d0e12] text-[#8b90a0] border border-[#232632] hover:text-[#e8e9ed]"
                       }`}
                     >
@@ -833,88 +958,72 @@ export default function BannerStudio() {
                   );
                 })}
               </div>
-            </div>
 
-            {/* Overlays & Custom Handle (Col 5) */}
-            <div className="md:col-span-5 rounded-2xl border border-[#232632] bg-[#15171e] p-4 space-y-3">
-              <div className="flex items-center gap-2 font-mono text-xs font-bold text-[#e8e9ed]">
-                <SlidersHorizontal className="h-3.5 w-3.5 text-pink-400" />
-                <span>Overlays & Customization</span>
-              </div>
-
-              <div className="space-y-2 pt-1">
-                {/* Custom Badge Toggle & Username */}
-                <div className="flex items-center justify-between rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632]">
-                  <div className="flex items-center gap-2">
-                    <User className="h-3.5 w-3.5 text-pink-400" />
-                    <span className="font-mono text-xs text-[#e8e9ed]">Glass Badge</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={badge}
-                    onChange={(e) => setBadge(e.target.checked)}
-                    className="h-4 w-4 rounded accent-pink-500"
-                  />
-                </div>
-
-                {/* Cozy Dark Tint Toggle */}
-                <div className="flex items-center justify-between rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632]">
-                  <div>
-                    <div className="font-mono text-xs text-[#e8e9ed]">Cozy Dark Tint</div>
-                    <div className="font-mono text-[10px] text-[#8b90a0]">Calms blinding white covers for dark mode</div>
-                  </div>
+              {/* Cozy Dark Tint & Vignette */}
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#232632]">
+                <label className="flex items-center justify-between rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632] cursor-pointer">
+                  <span className="font-mono text-xs text-[#e8e9ed]">Cozy Dark Tint</span>
                   <input
                     type="checkbox"
                     checked={tint}
                     onChange={(e) => setTint(e.target.checked)}
                     className="h-4 w-4 rounded accent-pink-500"
                   />
-                </div>
-
-                {/* Vignette Toggle */}
-                <div className="flex items-center justify-between rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632]">
-                  <div className="font-mono text-xs text-[#e8e9ed]">Cinematic Vignette</div>
+                </label>
+                <label className="flex items-center justify-between rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632] cursor-pointer">
+                  <span className="font-mono text-xs text-[#e8e9ed]">Vignette</span>
                   <input
                     type="checkbox"
                     checked={vignette}
                     onChange={(e) => setVignette(e.target.checked)}
                     className="h-4 w-4 rounded accent-pink-500"
                   />
-                </div>
+                </label>
               </div>
             </div>
           </div>
 
-          {/* Embed Code Snippet Cards */}
-          <div className="rounded-2xl border border-[#232632] bg-[#15171e] p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs font-bold text-[#e8e9ed]">Embed In Your GitHub Profile README</span>
-              <span className="font-mono text-[11px] text-[#8b90a0]">bypasses GitHub Camo stale caching</span>
+          {/* Straightforward Setup Guide (Image 4 Request) */}
+          <div className="rounded-2xl border border-[#232632] bg-[#15171e] p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#232632] pb-3">
+              <div>
+                <h3 className="font-mono text-sm font-bold text-[#e8e9ed]">How to add to your GitHub Profile</h3>
+                <p className="font-mono text-xs text-[#8b90a0] mt-0.5">
+                  Paste this snippet into your profile repository&apos;s <code className="text-pink-300">README.md</code>.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => copyToClipboard(markdownSnippet, "markdown")}
+                  className="rounded-lg bg-pink-500 px-3 py-1.5 font-mono text-xs font-bold text-white hover:bg-pink-600 transition-colors flex items-center gap-1.5"
+                >
+                  {copiedFormat === "markdown" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span>{copiedFormat === "markdown" ? "Copied!" : "Copy Markdown"}</span>
+                </button>
+                <button
+                  onClick={() => copyToClipboard(htmlSnippet, "html")}
+                  className="rounded-lg bg-[#232632] px-3 py-1.5 font-mono text-xs text-[#e8e9ed] hover:bg-[#2d3142] transition-colors"
+                >
+                  {copiedFormat === "html" ? "Copied HTML!" : "HTML"}
+                </button>
+              </div>
             </div>
 
-            <div className="relative rounded-xl bg-[#0d0e12] p-3 border border-[#232632]">
+            <div className="relative rounded-xl bg-[#0d0e12] p-3.5 border border-[#232632]">
               <pre className="font-mono text-xs text-[#e8e9ed] overflow-x-auto whitespace-pre-wrap break-all">
                 {markdownSnippet}
               </pre>
-              <button
-                onClick={() => copyToClipboard(markdownSnippet, "code")}
-                className="absolute right-2 top-2 rounded-lg bg-[#232632] p-1.5 text-[#8b90a0] hover:text-white"
-                title="Copy snippet"
-              >
-                {copiedFormat === "code" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-              </button>
             </div>
 
-            {/* Quick URL Copy Bar */}
-            <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between font-mono text-xs text-[#8b90a0] pt-1">
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between font-mono text-xs text-[#8b90a0]">
               <div className="truncate">
-                API Endpoint: <span className="text-pink-300 select-all">{fullProductionUrl}</span>
+                Raw Endpoint: <span className="text-pink-300 select-all">{fullProductionUrl}</span>
               </div>
               <button
-                onClick={() => copyToClipboard(fullProductionUrl, "url")}
-                className="rounded-lg bg-[#232632] px-3 py-1 text-[#e8e9ed] hover:bg-pink-500 hover:text-white transition-colors"
+                onClick={() => copyToClipboard(fullProductionUrl, "raw")}
+                className="text-pink-400 hover:underline text-left sm:text-right"
               >
-                {copiedFormat === "url" ? "Copied URL!" : "Copy Raw URL"}
+                {copiedFormat === "raw" ? "Copied URL!" : "Copy Raw Image URL"}
               </button>
             </div>
           </div>

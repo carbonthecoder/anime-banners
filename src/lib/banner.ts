@@ -32,10 +32,11 @@ function cacheSet(key: string, value: Buffer) {
 
 // Preset mapping
 export const BANNER_PRESETS = {
-  github: { width: 1844, height: 999, label: "GitHub Profile Banner (1844×999)" },
+  github: { width: 1844, height: 999, label: "GitHub Banner (1844×999 • 1.85:1)" },
   "github-compact": { width: 1200, height: 400, label: "GitHub Compact (1200×400 • 3:1)" },
-  twitter: { width: 1500, height: 500, label: "Twitter / X Header (1500×500 • 3:1)" },
-  discord: { width: 1920, height: 1080, label: "Discord Banner (1920×1080 • 16:9)" },
+  twitter: { width: 1500, height: 500, label: "Twitter / X (1500×500 • 3:1)" },
+  discord: { width: 680, height: 240, label: "Discord Profile (680×240 • 2.83:1)" },
+  "discord-server": { width: 960, height: 540, label: "Discord Server (960×540 • 16:9)" },
 } as const;
 
 export type PresetKey = keyof typeof BANNER_PRESETS;
@@ -45,6 +46,9 @@ export interface BannerOptions {
   height?: number;
   preset?: PresetKey | string;
   crop?: "attention" | "entropy" | "center" | "top";
+  fit?: "contain" | "cover";
+  zoom?: number; // 50 to 100, default 80
+  rotate?: number; // 0, 90, 180, 270
   badge?: boolean;
   user?: string;
   pool?: string;
@@ -216,24 +220,66 @@ export async function processBanner(
   width = Math.min(Math.max(200, width), 3840);
   height = Math.min(Math.max(100, height), 2160);
 
+  // Rotation
+  let processedBuffer = sourceBuffer;
+  if (options.rotate && [90, 180, 270].includes(options.rotate)) {
+    processedBuffer = await sharp(sourceBuffer).rotate(options.rotate).toBuffer();
+  }
+
   // Crop strategy
   let position: sharp.ResizeOptions["position"] = sharp.strategy.attention;
   if (options.crop === "entropy") position = sharp.strategy.entropy;
   if (options.crop === "center") position = "center";
   if (options.crop === "top") position = "top";
 
-  let pipeline = sharp(sourceBuffer).resize(width, height, {
-    fit: "cover",
-    position,
-  });
+  // Zoom: default 80% (frames character + book without aggressive cropping)
+  const zoom = options.zoom !== undefined ? Math.min(Math.max(50, options.zoom), 100) : 80;
+  const isCover = options.fit === "cover" || zoom >= 100;
+
+  const composites: sharp.OverlayOptions[] = [];
+  let pipeline: sharp.Sharp;
+
+  if (isCover) {
+    pipeline = sharp(processedBuffer).resize(width, height, {
+      fit: "cover",
+      position,
+    });
+  } else {
+    // Generate soft blurred background backdrop from source image
+    const bg = await sharp(processedBuffer)
+      .resize(width, height, { fit: "cover", position })
+      .blur(22)
+      .modulate({ brightness: 0.45 })
+      .toBuffer();
+
+    // Scale foreground to zoom% to keep character and book completely visible
+    const fgScale = zoom / 100;
+    const fgMaxH = Math.round(height * fgScale);
+    const fgMaxW = Math.round(width * fgScale);
+
+    const fg = await sharp(processedBuffer)
+      .resize({
+        width: fgMaxW,
+        height: fgMaxH,
+        fit: "inside",
+      })
+      .toBuffer();
+
+    const fgMeta = await sharp(fg).metadata();
+    const fgW = fgMeta.width || fgMaxW;
+    const fgH = fgMeta.height || fgMaxH;
+
+    const left = Math.max(0, Math.round((width - fgW) / 2));
+    const top = Math.max(0, Math.round((height - fgH) / 2));
+
+    composites.push({ input: fg, left, top, blend: "over" });
+    pipeline = sharp(bg);
+  }
 
   if (options.blur && options.blur > 0) {
     const sigma = Math.min(Math.max(0.3, options.blur), 20);
     pipeline = pipeline.blur(sigma);
   }
-
-  // Composite layers (vignette, dim, badge)
-  const composites: sharp.OverlayOptions[] = [];
 
   // Dim gradient at bottom for text readability
   if (options.dim) {
