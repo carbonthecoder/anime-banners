@@ -20,6 +20,7 @@ import {
   Share2,
   Cpu,
 } from "lucide-react";
+import { marked } from "marked";
 import manifestData from "@/data/banner_manifest.json";
 
 interface Category {
@@ -210,6 +211,9 @@ export default function BannerStudio() {
     const cleanUser = username.trim().replace(/^@/, "");
     if (!cleanUser) return;
     setIsFetchingGh(true);
+    setRealReadme(""); // Always clear previous user's README
+    setAutoDetectedLangs([]); // Clear previous user's detected stack
+
     try {
       // 1. Fetch User Profile
       const res = await fetch(`https://api.github.com/users/${encodeURIComponent(cleanUser)}`);
@@ -223,6 +227,16 @@ export default function BannerStudio() {
           followers: data.followers || 0,
           following: data.following || 0,
           public_repos: data.public_repos || 0,
+        });
+      } else {
+        setGhProfile({
+          login: cleanUser,
+          name: cleanUser,
+          avatar_url: `https://avatars.githubusercontent.com/${cleanUser}`,
+          bio: "Developer on GitHub.",
+          followers: 0,
+          following: 0,
+          public_repos: 0,
         });
       }
 
@@ -251,9 +265,11 @@ export default function BannerStudio() {
           .replace(/!\[[^\]]*\]\([^)]*banner[^)]*\)/gi, "")
           .trim();
         setRealReadme(cleanedReadme);
+      } else {
+        setRealReadme("");
       }
 
-      // 3. Auto-Detect User Tech Stack from Repos
+      // 3. Auto-Detect User Tech Stack from Repos (Does NOT auto-select, shows button instead)
       try {
         const reposRes = await fetch(
           `https://api.github.com/users/${encodeURIComponent(cleanUser)}/repos?sort=updated&per_page=30`
@@ -273,7 +289,7 @@ export default function BannerStudio() {
 
           if (detected.length > 0) {
             setAutoDetectedLangs(detected);
-            setSelectedPool(detected);
+            // Intentionally not auto-selecting: user clicks 'Apply Stack' button
           }
         }
       } catch {
@@ -286,10 +302,21 @@ export default function BannerStudio() {
         name: cleanUser,
         avatar_url: `https://avatars.githubusercontent.com/${cleanUser}`,
       }));
+      setRealReadme("");
     } finally {
       setIsFetchingGh(false);
     }
   }, []);
+
+  // Parse Real README markdown into clean rendered HTML
+  const renderedReadmeHtml = useMemo(() => {
+    if (!realReadme) return "";
+    try {
+      return marked.parse(realReadme, { async: false, breaks: true, gfm: true }) as string;
+    } catch {
+      return "";
+    }
+  }, [realReadme]);
 
   // Fetch initial profile README on load
   useEffect(() => {
@@ -824,10 +851,13 @@ export default function BannerStudio() {
                       </div>
 
                       {/* Real User's Profile README Content */}
-                      {realReadme ? (
-                        <div className="prose prose-invert prose-xs max-w-none font-mono text-xs whitespace-pre-wrap leading-relaxed opacity-90 border-t border-zinc-700/20 pt-4">
-                          {realReadme}
-                        </div>
+                      {renderedReadmeHtml ? (
+                        <div
+                          className={`github-readme-body border-t pt-4 ${
+                            githubTheme === "dark" ? "border-[#30363d] text-[#e6edf3]" : "border-[#d0d7de] text-[#1f2328]"
+                          }`}
+                          dangerouslySetInnerHTML={{ __html: renderedReadmeHtml }}
+                        />
                       ) : (
                         <div className="border-t border-zinc-700/20 pt-4 space-y-2">
                           <h3 className="text-base font-semibold">Hi, I&apos;m {ghProfile.name} 👋</h3>
@@ -905,8 +935,19 @@ export default function BannerStudio() {
                         className="w-full h-auto object-cover"
                       />
                     </div>
-                    <div className="text-xs font-semibold">Hi there 👋</div>
-                    <div className="text-[11px] text-[#8d96a0]">Real README preview for mobile visitors.</div>
+                    {renderedReadmeHtml ? (
+                      <div
+                        className={`github-readme-body text-[11px] border-t pt-3 ${
+                          githubTheme === "dark" ? "border-[#30363d] text-[#e6edf3]" : "border-[#d0d7de] text-[#1f2328]"
+                        }`}
+                        dangerouslySetInnerHTML={{ __html: renderedReadmeHtml }}
+                      />
+                    ) : (
+                      <div className="space-y-1 border-t border-zinc-700/20 pt-3">
+                        <div className="text-xs font-semibold">Hi, I&apos;m {ghProfile.name} 👋</div>
+                        <div className="text-[11px] text-[#8d96a0]">Real README preview for mobile visitors.</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1076,13 +1117,21 @@ export default function BannerStudio() {
                 )}
               </div>
 
-              {/* Auto-detected badge info */}
+              {/* Auto-detected badge info with apply button */}
               {autoDetectedLangs.length > 0 && (
-                <div className="flex items-center gap-1.5 rounded-lg bg-pink-500/10 border border-pink-500/20 px-2.5 py-1 font-mono text-[11px] text-pink-300">
-                  <Cpu className="h-3 w-3 text-pink-400" />
-                  <span>
-                    Auto-detected from @{ghProfile.login}: {autoDetectedLangs.join(", ")}
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-pink-500/10 border border-pink-500/25 p-2.5 font-mono text-xs">
+                  <div className="flex items-center gap-1.5 text-pink-300">
+                    <Cpu className="h-3.5 w-3.5 text-pink-400" />
+                    <span>
+                      Detected stack for @{ghProfile.login}: <strong className="text-white">{autoDetectedLangs.join(", ")}</strong>
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedPool(autoDetectedLangs)}
+                    className="rounded-lg bg-pink-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-pink-600 transition-colors cursor-pointer"
+                  >
+                    Select Detected Stack
+                  </button>
                 </div>
               )}
 
