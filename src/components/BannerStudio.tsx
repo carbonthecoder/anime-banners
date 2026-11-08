@@ -433,26 +433,6 @@ export default function BannerStudio() {
     };
   }, [bannerApiUrl]);
 
-  // Keyboard navigation: Space / R to shuffle
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        e.target instanceof HTMLSelectElement
-      ) {
-        return;
-      }
-      if (e.key === " " || e.key === "r" || e.key === "R") {
-        e.preventDefault();
-        reroll();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   const reroll = useCallback(() => {
     setPinnedId(null);
     setSeed(Math.floor(Math.random() * 1000000));
@@ -1098,7 +1078,6 @@ export default function BannerStudio() {
               >
                 <RotateCcw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
                 <span>Reroll Banner</span>
-                <span className="rounded bg-black/20 px-1 py-0.5 text-[10px] hidden sm:inline">R</span>
               </button>
 
               {/* Roll from Favorites Toggle */}
