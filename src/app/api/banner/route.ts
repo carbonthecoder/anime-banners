@@ -33,15 +33,6 @@ export async function GET(request: NextRequest) {
         : "attention"
     ) as BannerOptions["crop"];
 
-    const zoomParam = searchParams.get("zoom");
-    const zoom = zoomParam ? parseInt(zoomParam, 10) : 80;
-
-    const fitParam = searchParams.get("fit");
-    const fit = (fitParam === "cover" || fitParam === "contain" ? fitParam : undefined) as BannerOptions["fit"];
-
-    const rotateParam = searchParams.get("rotate");
-    const rotate = rotateParam ? parseInt(rotateParam, 10) : undefined;
-
     const badge = searchParams.get("badge") === "true" || searchParams.get("badge") === "1";
     const dim = searchParams.get("dim") === "true" || searchParams.get("dim") === "1";
     const tint = searchParams.get("tint") === "true" || searchParams.get("tint") === "1";
@@ -68,9 +59,6 @@ export async function GET(request: NextRequest) {
       height,
       preset,
       crop,
-      fit,
-      zoom,
-      rotate,
       badge,
       user,
       tint,

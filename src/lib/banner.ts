@@ -46,9 +46,6 @@ export interface BannerOptions {
   height?: number;
   preset?: PresetKey | string;
   crop?: "attention" | "entropy" | "center" | "top";
-  fit?: "contain" | "cover";
-  zoom?: number; // 50 to 100, default 80
-  rotate?: number; // 0, 90, 180, 270
   badge?: boolean;
   user?: string;
   pool?: string;
@@ -220,66 +217,24 @@ export async function processBanner(
   width = Math.min(Math.max(200, width), 3840);
   height = Math.min(Math.max(100, height), 2160);
 
-  // Rotation
-  let processedBuffer = sourceBuffer;
-  if (options.rotate && [90, 180, 270].includes(options.rotate)) {
-    processedBuffer = await sharp(sourceBuffer).rotate(options.rotate).toBuffer();
-  }
-
   // Crop strategy
   let position: sharp.ResizeOptions["position"] = sharp.strategy.attention;
   if (options.crop === "entropy") position = sharp.strategy.entropy;
   if (options.crop === "center") position = "center";
   if (options.crop === "top") position = "top";
 
-  // Zoom: default 80% (frames character + book without aggressive cropping)
-  const zoom = options.zoom !== undefined ? Math.min(Math.max(50, options.zoom), 100) : 80;
-  const isCover = options.fit === "cover" || zoom >= 100;
-
-  const composites: sharp.OverlayOptions[] = [];
-  let pipeline: sharp.Sharp;
-
-  if (isCover) {
-    pipeline = sharp(processedBuffer).resize(width, height, {
-      fit: "cover",
-      position,
-    });
-  } else {
-    // Generate soft blurred background backdrop from source image
-    const bg = await sharp(processedBuffer)
-      .resize(width, height, { fit: "cover", position })
-      .blur(22)
-      .modulate({ brightness: 0.45 })
-      .toBuffer();
-
-    // Scale foreground to zoom% to keep character and book completely visible
-    const fgScale = zoom / 100;
-    const fgMaxH = Math.round(height * fgScale);
-    const fgMaxW = Math.round(width * fgScale);
-
-    const fg = await sharp(processedBuffer)
-      .resize({
-        width: fgMaxW,
-        height: fgMaxH,
-        fit: "inside",
-      })
-      .toBuffer();
-
-    const fgMeta = await sharp(fg).metadata();
-    const fgW = fgMeta.width || fgMaxW;
-    const fgH = fgMeta.height || fgMaxH;
-
-    const left = Math.max(0, Math.round((width - fgW) / 2));
-    const top = Math.max(0, Math.round((height - fgH) / 2));
-
-    composites.push({ input: fg, left, top, blend: "over" });
-    pipeline = sharp(bg);
-  }
+  // Full edge-to-edge banner cover (sharp attention preserves character & book)
+  let pipeline = sharp(sourceBuffer).resize(width, height, {
+    fit: "cover",
+    position,
+  });
 
   if (options.blur && options.blur > 0) {
     const sigma = Math.min(Math.max(0.3, options.blur), 20);
     pipeline = pipeline.blur(sigma);
   }
+
+  const composites: sharp.OverlayOptions[] = [];
 
   // Dim gradient at bottom for text readability
   if (options.dim) {
