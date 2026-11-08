@@ -127,14 +127,14 @@ export default function BannerStudio() {
   const [githubTheme, setGithubTheme] = useState<"dark" | "light">("dark");
 
   // GitHub User Profile & Real README Fetcher
-  const [ghInput, setGhInput] = useState("carbonthecoder");
+  const [ghInput, setGhInput] = useState("");
   const [ghProfile, setGhProfile] = useState<GitHubProfile>({
-    login: "carbonthecoder",
-    name: "Carbon",
-    avatar_url: "https://avatars.githubusercontent.com/carbonthecoder",
-    bio: "10000 | obsessed with building things from scratch.",
-    followers: 128,
-    following: 42,
+    login: "username",
+    name: "Developer",
+    avatar_url: "https://avatars.githubusercontent.com/u/9919?s=200&v=4",
+    bio: "Developer building things on GitHub.",
+    followers: 42,
+    following: 12,
     public_repos: 18,
   });
   const [realReadme, setRealReadme] = useState<string>("");
@@ -352,10 +352,6 @@ export default function BannerStudio() {
     }
   }, [realReadme]);
 
-  // Fetch initial profile README on load
-  useEffect(() => {
-    fetchGitHubUser("carbonthecoder");
-  }, [fetchGitHubUser]);
 
   // Studio live preview API URL (includes seed for live interactive rerolling)
   const bannerApiUrl = useMemo(() => {
@@ -528,7 +524,7 @@ export default function BannerStudio() {
   }, [customW, customH]);
 
   // Clean Markdown & HTML Snippets
-  const userHandle = ghProfile.login || "carbonthecoder";
+  const userHandle = ghProfile.login || "username";
   const markdownSnippet = `[![Banner](${cleanEmbedUrl})](https://github.com/${userHandle})`;
   const htmlSnippet = `<a href="https://github.com/${userHandle}">\n  <img src="${cleanEmbedUrl}" width="100%" alt="Anime Programming Banner" />\n</a>`;
 
@@ -784,8 +780,8 @@ export default function BannerStudio() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") fetchGitHubUser(ghInput);
                     }}
-                    placeholder="username"
-                    className="rounded-lg bg-[#0d0e12] pl-6 pr-3 py-1 font-mono text-xs text-[#e8e9ed] border border-[#232632] focus:outline-none focus:border-pink-500/60 w-36 sm:w-44"
+                    placeholder="eg - carbonthecoder"
+                    className="rounded-lg bg-[#0d0e12] pl-6 pr-3 py-1 font-mono text-xs text-[#e8e9ed] border border-[#232632] focus:outline-none focus:border-pink-500/60 w-44 sm:w-52"
                   />
                 </div>
                 <button
@@ -1301,7 +1297,7 @@ export default function BannerStudio() {
                   <span className="font-mono text-xs text-[#8b90a0]">@</span>
                   <input
                     type="text"
-                    placeholder="Enter GitHub username to get your stack..."
+                    placeholder="eg - carbonthecoder"
                     value={ghInput}
                     onChange={(e) => setGhInput(e.target.value)}
                     onKeyDown={(e) => {
