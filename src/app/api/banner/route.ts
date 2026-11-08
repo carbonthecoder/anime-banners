@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const lang = searchParams.get("lang") || undefined;
+    const pool = searchParams.get("pool") || undefined;
+    const user = searchParams.get("user") || undefined;
     const seed = searchParams.get("seed") || undefined;
     const id = searchParams.get("id") || undefined;
 
@@ -33,6 +35,7 @@ export async function GET(request: NextRequest) {
 
     const badge = searchParams.get("badge") === "true" || searchParams.get("badge") === "1";
     const dim = searchParams.get("dim") === "true" || searchParams.get("dim") === "1";
+    const tint = searchParams.get("tint") === "true" || searchParams.get("tint") === "1";
     const vignette = searchParams.get("vignette") === "true" || searchParams.get("vignette") === "1";
 
     const blurParam = searchParams.get("blur");
@@ -47,7 +50,7 @@ export async function GET(request: NextRequest) {
     const quality = qualityParam ? parseInt(qualityParam, 10) : 85;
 
     // Select banner item
-    const { item, isSeeded } = selectItem({ id, seed, lang });
+    const { item, isSeeded } = selectItem({ id, seed, lang, pool });
 
     // Fetch and process image
     const sourceBuffer = await fetchSourceImage(item);
@@ -57,6 +60,8 @@ export async function GET(request: NextRequest) {
       preset,
       crop,
       badge,
+      user,
+      tint,
       dim,
       vignette,
       blur,

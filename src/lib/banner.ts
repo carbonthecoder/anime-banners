@@ -46,6 +46,9 @@ export interface BannerOptions {
   preset?: PresetKey | string;
   crop?: "attention" | "entropy" | "center" | "top";
   badge?: boolean;
+  user?: string;
+  pool?: string;
+  tint?: boolean;
   dim?: boolean;
   vignette?: boolean;
   blur?: number;
@@ -82,6 +85,19 @@ export function matchCategories(query: string): string[] {
     docker: "Docker",
     math: "Math",
     sicp: "SICP",
+    kt: "Kotlin",
+    kotlin: "Kotlin",
+    java: "Java",
+    sql: "SQL",
+    git: "Git",
+    html: "HTML",
+    css: "CSS",
+    php: "PHP",
+    swift: "Swift",
+    haskell: "Haskell",
+    nix: "Nix",
+    vim: "Vim",
+    neovim: "Vim",
   };
 
   const matched = new Set<string>();
@@ -98,12 +114,13 @@ export function matchCategories(query: string): string[] {
     .map((c) => c.name);
 }
 
-// Filter items by language or keyword
-export function filterItems(options: { lang?: string; query?: string }): BannerItem[] {
+// Filter items by language or keyword or pool
+export function filterItems(options: { lang?: string; pool?: string; query?: string }): BannerItem[] {
   let list = manifest.items;
+  const targetCategory = options.pool || options.lang;
 
-  if (options.lang) {
-    const matchedCats = matchCategories(options.lang);
+  if (targetCategory) {
+    const matchedCats = matchCategories(targetCategory);
     if (matchedCats.length > 0) {
       const catSet = new Set(matchedCats.map((c) => c.toLowerCase()));
       list = list.filter((item) => catSet.has(item.category.toLowerCase()));
@@ -131,7 +148,7 @@ function hashString(str: string): number {
 }
 
 // Select an item based on ID, Seed, or Random selection
-export function selectItem(options: { id?: string; seed?: string; lang?: string }): {
+export function selectItem(options: { id?: string; seed?: string; lang?: string; pool?: string }): {
   item: BannerItem;
   isSeeded: boolean;
 } {
@@ -140,7 +157,7 @@ export function selectItem(options: { id?: string; seed?: string; lang?: string 
     if (found) return { item: found, isSeeded: true };
   }
 
-  const pool = filterItems({ lang: options.lang });
+  const pool = filterItems({ lang: options.lang, pool: options.pool });
 
   if (options.seed !== undefined && options.seed !== "") {
     const num = parseInt(options.seed, 10);
@@ -234,6 +251,16 @@ export async function processBanner(
     composites.push({ input: dimSvg, blend: "over" });
   }
 
+  // Cozy dark tint (calms intense white highlights for dark mode)
+  if (options.tint) {
+    const tintSvg = Buffer.from(`
+      <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#0d0e12" fill-opacity="0.18" />
+      </svg>
+    `);
+    composites.push({ input: tintSvg, blend: "over" });
+  }
+
   // Vignette effect
   if (options.vignette) {
     const vignetteSvg = Buffer.from(`
@@ -250,22 +277,26 @@ export async function processBanner(
     composites.push({ input: vignetteSvg, blend: "multiply" });
   }
 
-  // Corner glass badge
+  // Corner glass badge with Dusk Rose accent (#f472b6)
   if (options.badge) {
     const escapedCat = item.category.replace(/[<>&"]/g, "");
     const escapedTitle = item.title.replace(/[<>&"]/g, "").slice(0, 36);
+    const escapedUser = (options.user || "").trim().replace(/[<>&"]/g, "").slice(0, 24);
 
-    const badgeWidth = Math.min(Math.max(260, Math.floor(width * 0.28)), 420);
+    const badgeWidth = Math.min(Math.max(280, Math.floor(width * 0.3)), 460);
     const badgeHeight = Math.floor(badgeWidth * 0.22);
-    const fontSizeCat = Math.floor(badgeHeight * 0.32);
-    const fontSizeTitle = Math.floor(badgeHeight * 0.22);
+    const fontSizeMain = Math.floor(badgeHeight * 0.32);
+    const fontSizeSub = Math.floor(badgeHeight * 0.22);
+
+    const line1 = escapedUser ? `@${escapedUser} · ${escapedCat}` : escapedCat;
+    const line2 = escapedTitle;
 
     const badgeSvg = Buffer.from(`
       <svg width="${badgeWidth}" height="${badgeHeight}" viewBox="0 0 ${badgeWidth} ${badgeHeight}" xmlns="http://www.w3.org/2000/svg">
-        <rect x="0" y="0" width="${badgeWidth}" height="${badgeHeight}" rx="${Math.floor(badgeHeight * 0.3)}" fill="rgba(8, 8, 12, 0.82)" stroke="rgba(255, 255, 255, 0.18)" stroke-width="1.5" />
-        <circle cx="${Math.floor(badgeHeight * 0.45)}" cy="${Math.floor(badgeHeight * 0.5)}" r="${Math.floor(badgeHeight * 0.16)}" fill="#ec4899" />
-        <text x="${Math.floor(badgeHeight * 0.8)}" y="${Math.floor(badgeHeight * 0.46)}" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="${fontSizeCat}" font-weight="700">${escapedCat}</text>
-        <text x="${Math.floor(badgeHeight * 0.8)}" y="${Math.floor(badgeHeight * 0.78)}" fill="rgba(255, 255, 255, 0.65)" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="${fontSizeTitle}">${escapedTitle}</text>
+        <rect x="0" y="0" width="${badgeWidth}" height="${badgeHeight}" rx="${Math.floor(badgeHeight * 0.3)}" fill="rgba(13, 14, 18, 0.85)" stroke="rgba(244, 114, 182, 0.3)" stroke-width="1.5" />
+        <circle cx="${Math.floor(badgeHeight * 0.45)}" cy="${Math.floor(badgeHeight * 0.5)}" r="${Math.floor(badgeHeight * 0.16)}" fill="#f472b6" />
+        <text x="${Math.floor(badgeHeight * 0.8)}" y="${Math.floor(badgeHeight * 0.46)}" fill="#fdf2f8" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="${fontSizeMain}" font-weight="700">${line1}</text>
+        <text x="${Math.floor(badgeHeight * 0.8)}" y="${Math.floor(badgeHeight * 0.78)}" fill="rgba(244, 244, 246, 0.7)" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="${fontSizeSub}">${line2}</text>
       </svg>
     `);
 
