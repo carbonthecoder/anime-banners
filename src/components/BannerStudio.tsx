@@ -5,7 +5,6 @@ import {
   RotateCcw,
   Copy,
   Check,
-  Download,
   ExternalLink,
   Pin,
   Sparkles,
@@ -19,6 +18,9 @@ import {
   Moon,
   Share2,
   Cpu,
+  Heart,
+  HelpCircle,
+  Undo2,
 } from "lucide-react";
 import { marked } from "marked";
 import manifestData from "@/data/banner_manifest.json";
@@ -84,12 +86,39 @@ export default function BannerStudio() {
   const [customH, setCustomH] = useState(999);
   const [crop, setCrop] = useState<"attention" | "center" | "entropy" | "top">("attention");
 
-  // Rotation Pool & Visual Overlays
+  // Rotation Pool, Favorites & Visual Overlays
   const [selectedPool, setSelectedPool] = useState<string[]>([]);
+  const [rollFromFavs, setRollFromFavs] = useState(false);
   const [tint, setTint] = useState(false);
   const [dim, setDim] = useState(false);
   const [vignette, setVignette] = useState(false);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
+
+  // Favorites in LocalStorage
+  const [favorites, setFavorites] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("anime_banner_favs");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) setFavorites(parsed);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const toggleFavorite = useCallback((id: string) => {
+    setFavorites((prev) => {
+      const next = prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
+      try {
+        localStorage.setItem("anime_banner_favs", JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
 
   // App & View State
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1000000));
@@ -139,9 +168,9 @@ export default function BannerStudio() {
   const allItems: BannerItem[] = useMemo(() => manifestData.items as BannerItem[], []);
   const allCategories: Category[] = useMemo(() => manifestData.categories as Category[], []);
 
-  // Eagerly preload catalog images on mount
+  // Preload catalog covers into memory
   useEffect(() => {
-    const preloadBatch = allItems.slice(0, 36);
+    const preloadBatch = allItems.slice(0, 40);
     preloadBatch.forEach((item) => {
       const img = new Image();
       img.src = item.cdn_url;
@@ -166,9 +195,19 @@ export default function BannerStudio() {
       setPreset("custom");
     }
 
+    const qCrop = urlParams.get("crop");
+    if (qCrop && ["attention", "entropy", "center", "top"].includes(qCrop)) {
+      setCrop(qCrop as "attention" | "entropy" | "center" | "top");
+    }
+
     const qPool = urlParams.get("pool");
     if (qPool) {
       setSelectedPool(qPool.split(",").filter(Boolean));
+    }
+
+    const qFavs = urlParams.get("favs");
+    if (qFavs) {
+      setRollFromFavs(true);
     }
 
     const qId = urlParams.get("id");
@@ -194,8 +233,16 @@ export default function BannerStudio() {
 
     if (pinnedId) {
       params.set("id", pinnedId);
-    } else if (selectedPool.length > 0) {
-      params.set("pool", selectedPool.join(","));
+    } else {
+      if (rollFromFavs && favorites.length > 0) {
+        params.set("favs", favorites.join(","));
+      } else if (selectedPool.length > 0) {
+        params.set("pool", selectedPool.join(","));
+      }
+    }
+
+    if (crop !== "attention") {
+      params.set("crop", crop);
     }
 
     if (tint) params.set("tint", "true");
@@ -204,18 +251,17 @@ export default function BannerStudio() {
     const qs = params.toString();
     const newPath = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
     window.history.replaceState(null, "", newPath);
-  }, [preset, customW, customH, pinnedId, selectedPool, tint, vignette]);
+  }, [preset, customW, customH, pinnedId, selectedPool, rollFromFavs, favorites, crop, tint, vignette]);
 
   // Fetch real GitHub Profile and actual README
   const fetchGitHubUser = useCallback(async (username: string) => {
     const cleanUser = username.trim().replace(/^@/, "");
     if (!cleanUser) return;
     setIsFetchingGh(true);
-    setRealReadme(""); // Always clear previous user's README
-    setAutoDetectedLangs([]); // Clear previous user's detected stack
+    setRealReadme("");
+    setAutoDetectedLangs([]);
 
     try {
-      // 1. Fetch User Profile
       const res = await fetch(`https://api.github.com/users/${encodeURIComponent(cleanUser)}`);
       if (res.ok) {
         const data = await res.json();
@@ -240,7 +286,7 @@ export default function BannerStudio() {
         });
       }
 
-      // 2. Fetch User's Real README.md
+      // Fetch User's Real README.md
       let readmeText = "";
       try {
         const readmeRes = await fetch(
@@ -258,7 +304,6 @@ export default function BannerStudio() {
         // Fallback
       }
 
-      // Strip existing top banner if present, so we don't duplicate
       if (readmeText) {
         const cleanedReadme = readmeText
           .replace(/<a[^>]*>\s*<img[^>]*banner[^>]*>\s*<\/a>/gi, "")
@@ -269,7 +314,7 @@ export default function BannerStudio() {
         setRealReadme("");
       }
 
-      // 3. Auto-Detect User Tech Stack from Repos (Does NOT auto-select, shows button instead)
+      // Auto-Detect User Tech Stack from Repos (does NOT auto-select, button appears)
       try {
         const reposRes = await fetch(
           `https://api.github.com/users/${encodeURIComponent(cleanUser)}/repos?sort=updated&per_page=30`
@@ -289,7 +334,6 @@ export default function BannerStudio() {
 
           if (detected.length > 0) {
             setAutoDetectedLangs(detected);
-            // Intentionally not auto-selecting: user clicks 'Apply Stack' button
           }
         }
       } catch {
@@ -339,7 +383,9 @@ export default function BannerStudio() {
     } else {
       params.set("seed", seed.toString());
 
-      if (selectedPool.length > 0) {
+      if (rollFromFavs && favorites.length > 0) {
+        params.set("favs", favorites.join(","));
+      } else if (selectedPool.length > 0) {
         params.set("pool", selectedPool.join(","));
       }
     }
@@ -354,7 +400,7 @@ export default function BannerStudio() {
 
     const qs = params.toString();
     return `/api/banner${qs ? `?${qs}` : ""}`;
-  }, [preset, customW, customH, pinnedId, seed, selectedPool, crop, tint, dim, vignette]);
+  }, [preset, customW, customH, pinnedId, seed, rollFromFavs, favorites, selectedPool, crop, tint, dim, vignette]);
 
   const fullProductionUrl = useMemo(() => {
     const origin = "https://banners.carbon.is-a.dev";
@@ -413,6 +459,7 @@ export default function BannerStudio() {
   }, []);
 
   const toggleTopicInPool = (topic: string) => {
+    setRollFromFavs(false);
     setSelectedPool((prev) => {
       if (prev.includes(topic)) {
         return prev.filter((t) => t !== topic);
@@ -439,8 +486,7 @@ export default function BannerStudio() {
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (touchStartX.current === null) return;
-    const touchEndX = e.changedTouches[0].clientX;
-    const diff = touchEndX - touchStartX.current;
+    const diff = e.changedTouches[0].clientX - touchStartX.current;
     if (Math.abs(diff) > 45) {
       reroll();
     }
@@ -451,15 +497,18 @@ export default function BannerStudio() {
   const filteredCatalog = useMemo(() => {
     return allItems.filter((item) => {
       const matchCat =
-        selectedCatalogCat === "All" ||
-        item.category.toLowerCase() === selectedCatalogCat.toLowerCase();
+        selectedCatalogCat === "All"
+          ? true
+          : selectedCatalogCat === "Favorites"
+          ? favorites.includes(item.id)
+          : item.category.toLowerCase() === selectedCatalogCat.toLowerCase();
       const matchQuery =
         !searchQuery ||
         item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.category.toLowerCase().includes(searchQuery.toLowerCase());
       return matchCat && matchQuery;
     });
-  }, [allItems, selectedCatalogCat, searchQuery]);
+  }, [allItems, selectedCatalogCat, searchQuery, favorites]);
 
   const totalPages = Math.ceil(filteredCatalog.length / itemsPerPage);
   const paginatedCatalog = useMemo(() => {
@@ -467,14 +516,22 @@ export default function BannerStudio() {
     return filteredCatalog.slice(start, start + itemsPerPage);
   }, [filteredCatalog, catalogPage]);
 
+  // Dynamic Aspect Ratio for canvas container
+  const activeAspectRatio = useMemo(() => {
+    return `${customW} / ${customH}`;
+  }, [customW, customH]);
+
   // Clean Markdown & HTML Snippets
   const userHandle = ghProfile.login || "carbonthecoder";
   const markdownSnippet = `[![Banner](${fullProductionUrl})](https://github.com/${userHandle})`;
   const htmlSnippet = `<a href="https://github.com/${userHandle}">\n  <img src="${fullProductionUrl}" width="100%" alt="Anime Programming Banner" />\n</a>`;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
-      {/* Top Header: banners.carbon (Option 1) */}
+    <div
+      className="mx-auto max-w-6xl px-4 py-4 sm:py-6"
+      style={{ zoom: "0.82" }}
+    >
+      {/* Top Header */}
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#232632] pb-5">
         <div>
           <div className="flex items-center gap-2">
@@ -485,6 +542,12 @@ export default function BannerStudio() {
             <span className="rounded-full bg-pink-500/10 px-2.5 py-0.5 font-mono text-[11px] text-pink-400 border border-pink-500/20">
               853 covers
             </span>
+            {favorites.length > 0 && (
+              <span className="rounded-full bg-rose-500/10 px-2 py-0.5 font-mono text-[11px] text-rose-300 border border-rose-500/30 flex items-center gap-1">
+                <Heart className="h-2.5 w-2.5 fill-rose-400" />
+                {favorites.length} saved
+              </span>
+            )}
           </div>
           <p className="mt-1 font-mono text-xs text-[#8b90a0]">
             853 manga programming books. A fresh cover on every profile visit.
@@ -495,7 +558,7 @@ export default function BannerStudio() {
         <div className="flex flex-wrap items-center gap-1 rounded-xl bg-[#15171e] p-1 border border-[#232632]">
           <button
             onClick={() => setViewMode("canvas")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs transition-colors cursor-pointer ${
               viewMode === "canvas"
                 ? "bg-[#232632] text-[#e8e9ed] font-medium"
                 : "text-[#8b90a0] hover:text-[#e8e9ed]"
@@ -505,7 +568,7 @@ export default function BannerStudio() {
           </button>
           <button
             onClick={() => setViewMode("github-desktop")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs transition-colors cursor-pointer ${
               viewMode === "github-desktop"
                 ? "bg-pink-500/15 text-pink-300 font-medium border border-pink-500/30"
                 : "text-[#8b90a0] hover:text-[#e8e9ed]"
@@ -516,7 +579,7 @@ export default function BannerStudio() {
           </button>
           <button
             onClick={() => setViewMode("github-mobile")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs transition-colors cursor-pointer ${
               viewMode === "github-mobile"
                 ? "bg-pink-500/15 text-pink-300 font-medium border border-pink-500/30"
                 : "text-[#8b90a0] hover:text-[#e8e9ed]"
@@ -527,7 +590,7 @@ export default function BannerStudio() {
           </button>
           <button
             onClick={() => setViewMode("catalog")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-xs transition-colors cursor-pointer ${
               viewMode === "catalog"
                 ? "bg-[#232632] text-[#e8e9ed] font-medium"
                 : "text-[#8b90a0] hover:text-[#e8e9ed]"
@@ -564,7 +627,7 @@ export default function BannerStudio() {
                   setSelectedCatalogCat("All");
                   setCatalogPage(1);
                 }}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-lg font-mono text-xs transition-colors ${
+                className={`whitespace-nowrap px-3 py-1.5 rounded-lg font-mono text-xs transition-colors cursor-pointer ${
                   selectedCatalogCat === "All"
                     ? "bg-pink-500 text-white font-medium"
                     : "bg-[#15171e] text-[#8b90a0] border border-[#232632] hover:text-[#e8e9ed]"
@@ -572,6 +635,23 @@ export default function BannerStudio() {
               >
                 All (853)
               </button>
+
+              {/* Favorites Tab */}
+              <button
+                onClick={() => {
+                  setSelectedCatalogCat("Favorites");
+                  setCatalogPage(1);
+                }}
+                className={`whitespace-nowrap px-3 py-1.5 rounded-lg font-mono text-xs transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  selectedCatalogCat === "Favorites"
+                    ? "bg-rose-500 text-white font-semibold"
+                    : "bg-[#15171e] text-rose-300/80 border border-rose-500/30 hover:text-white"
+                }`}
+              >
+                <Heart className={`h-3 w-3 ${selectedCatalogCat === "Favorites" ? "fill-white" : "fill-rose-400"}`} />
+                <span>Favorites ({favorites.length})</span>
+              </button>
+
               {allCategories.slice(0, 10).map((cat) => (
                 <button
                   key={cat.name}
@@ -579,7 +659,7 @@ export default function BannerStudio() {
                     setSelectedCatalogCat(cat.name);
                     setCatalogPage(1);
                   }}
-                  className={`whitespace-nowrap px-3 py-1.5 rounded-lg font-mono text-xs transition-colors ${
+                  className={`whitespace-nowrap px-3 py-1.5 rounded-lg font-mono text-xs transition-colors cursor-pointer ${
                     selectedCatalogCat === cat.name
                       ? "bg-pink-500 text-white font-medium"
                       : "bg-[#15171e] text-[#8b90a0] border border-[#232632] hover:text-[#e8e9ed]"
@@ -591,32 +671,63 @@ export default function BannerStudio() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {paginatedCatalog.map((item) => (
-              <div
-                key={item.id}
-                onClick={() => {
-                  setPinnedId(item.id);
-                  setViewMode("canvas");
-                }}
-                className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#232632] bg-[#15171e] hover:border-pink-500/50 transition-all hover:scale-[1.01]"
-              >
-                <div className="aspect-[16/10] overflow-hidden bg-black/40">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={item.cdn_url}
-                    alt={item.title}
-                    loading="eager"
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                </div>
-                <div className="p-2.5">
-                  <div className="font-mono text-[10px] text-pink-400 font-bold">{item.category}</div>
-                  <div className="font-mono text-xs text-[#e8e9ed] truncate">{item.title}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+          {filteredCatalog.length === 0 ? (
+            <div className="rounded-2xl border border-[#232632] bg-[#15171e] p-12 text-center font-mono">
+              <Heart className="mx-auto h-8 w-8 text-[#8b90a0] mb-2" />
+              <p className="text-sm text-[#e8e9ed]">No covers match this selection.</p>
+              {selectedCatalogCat === "Favorites" && (
+                <p className="text-xs text-[#8b90a0] mt-1">
+                  Click the heart icon on any cover to add it to your favorites list.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {paginatedCatalog.map((item) => {
+                const isFav = favorites.includes(item.id);
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => {
+                      setPinnedId(item.id);
+                      setViewMode("canvas");
+                    }}
+                    className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#232632] bg-[#15171e] hover:border-pink-500/50 transition-all hover:scale-[1.01]"
+                  >
+                    {/* Favorite Button on Card */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFavorite(item.id);
+                      }}
+                      className={`absolute top-2 right-2 z-10 rounded-full p-1.5 backdrop-blur-md transition-all cursor-pointer ${
+                        isFav
+                          ? "bg-rose-500/90 text-white shadow-md shadow-rose-500/30"
+                          : "bg-black/60 text-[#8b90a0] hover:text-white opacity-80 group-hover:opacity-100"
+                      }`}
+                      title={isFav ? "Remove favorite" : "Save favorite"}
+                    >
+                      <Heart className={`h-3 w-3 ${isFav ? "fill-white text-white" : ""}`} />
+                    </button>
+
+                    <div className="aspect-[16/10] overflow-hidden bg-black/40">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.cdn_url}
+                        alt={item.title}
+                        loading="eager"
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    </div>
+                    <div className="p-2.5">
+                      <div className="font-mono text-[10px] text-pink-400 font-bold">{item.category}</div>
+                      <div className="font-mono text-xs text-[#e8e9ed] truncate">{item.title}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="flex items-center justify-between border-t border-[#232632] pt-4 font-mono text-xs">
             <span className="text-[#8b90a0]">
@@ -626,14 +737,14 @@ export default function BannerStudio() {
               <button
                 disabled={catalogPage <= 1}
                 onClick={() => setCatalogPage((p) => Math.max(1, p - 1))}
-                className="rounded-lg border border-[#232632] bg-[#15171e] px-3 py-1 text-[#e8e9ed] disabled:opacity-30"
+                className="rounded-lg border border-[#232632] bg-[#15171e] px-3 py-1 text-[#e8e9ed] disabled:opacity-30 cursor-pointer"
               >
                 Prev
               </button>
               <button
                 disabled={catalogPage >= totalPages}
                 onClick={() => setCatalogPage((p) => Math.min(totalPages, p + 1))}
-                className="rounded-lg border border-[#232632] bg-[#15171e] px-3 py-1 text-[#e8e9ed] disabled:opacity-30"
+                className="rounded-lg border border-[#232632] bg-[#15171e] px-3 py-1 text-[#e8e9ed] disabled:opacity-30 cursor-pointer"
               >
                 Next
               </button>
@@ -676,7 +787,7 @@ export default function BannerStudio() {
                 <span className="font-mono text-xs text-[#8b90a0]">Theme:</span>
                 <button
                   onClick={() => setGithubTheme((t) => (t === "dark" ? "light" : "dark"))}
-                  className="flex items-center gap-1.5 rounded-lg bg-[#0d0e12] px-2.5 py-1 font-mono text-xs text-[#e8e9ed] border border-[#232632] hover:border-pink-500/40"
+                  className="flex items-center gap-1.5 rounded-lg bg-[#0d0e12] px-2.5 py-1 font-mono text-xs text-[#e8e9ed] border border-[#232632] hover:border-pink-500/40 cursor-pointer"
                 >
                   {githubTheme === "dark" ? (
                     <>
@@ -696,12 +807,13 @@ export default function BannerStudio() {
 
           {/* Viewport Stages */}
           {viewMode === "canvas" ? (
-            /* Clean Full-Bleed Banner Canvas (No blur border, 100% full cover!) */
+            /* Clean Full-Bleed Banner Canvas (Dynamic Aspect Ratio matching active preset) */
             <div className="relative overflow-hidden rounded-2xl border border-[#232632] bg-[#0d0e12] shadow-2xl">
               <div
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
-                className="relative aspect-[16/9] w-full overflow-hidden bg-[#0d0e12] flex items-center justify-center select-none"
+                style={{ aspectRatio: activeAspectRatio }}
+                className="relative w-full max-h-[580px] overflow-hidden bg-[#0d0e12] flex items-center justify-center select-none"
               >
                 {/* Shiny Left-to-Right Shimmer Sweep while loading */}
                 {isLoading && (
@@ -735,19 +847,42 @@ export default function BannerStudio() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {/* Favorite Button */}
                   <button
                     onClick={() => {
-                      if (currentMeta.id) setPinnedId(currentMeta.id);
+                      if (currentMeta.id) toggleFavorite(currentMeta.id);
+                    }}
+                    className={`flex items-center gap-1 rounded-lg px-2.5 py-1 font-mono text-xs border transition-colors cursor-pointer ${
+                      favorites.includes(currentMeta.id)
+                        ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                        : "bg-[#0d0e12] text-[#8b90a0] border-[#232632] hover:text-[#e8e9ed]"
+                    }`}
+                    title={favorites.includes(currentMeta.id) ? "Remove from Favorites" : "Save to Favorites"}
+                  >
+                    <Heart className={`h-3 w-3 ${favorites.includes(currentMeta.id) ? "fill-rose-400 text-rose-400" : ""}`} />
+                    <span>{favorites.includes(currentMeta.id) ? "Saved" : "Fav"}</span>
+                  </button>
+
+                  {/* Pin Button */}
+                  <button
+                    onClick={() => {
+                      if (pinnedId) {
+                        setPinnedId(null);
+                      } else if (currentMeta.id) {
+                        setPinnedId(currentMeta.id);
+                      }
                     }}
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-1 font-mono text-xs border transition-colors cursor-pointer ${
                       pinnedId
                         ? "bg-pink-500/20 text-pink-300 border-pink-500/40"
                         : "bg-[#0d0e12] text-[#8b90a0] border-[#232632] hover:text-[#e8e9ed]"
                     }`}
+                    title="Lock this cover so it stays permanently rather than rotating"
                   >
                     <Pin className="h-3 w-3" />
                     <span>{pinnedId ? "Pinned" : "Pin"}</span>
                   </button>
+
                   <a
                     href={bannerApiUrl}
                     target="_blank"
@@ -761,7 +896,7 @@ export default function BannerStudio() {
               </div>
             </div>
           ) : viewMode === "github-desktop" ? (
-            /* Ditto Exact Real GitHub Desktop Profile Mockup with Real README Content */
+            /* Real GitHub Desktop Profile Mockup with Real README Content */
             <div
               className={`rounded-2xl border transition-colors font-sans overflow-hidden shadow-2xl ${
                 githubTheme === "dark"
@@ -873,7 +1008,7 @@ export default function BannerStudio() {
               </div>
             </div>
           ) : (
-            /* Ditto Exact Real GitHub Mobile Mockup */
+            /* Real GitHub Mobile Mockup */
             <div
               className={`mx-auto max-w-sm rounded-3xl border-4 font-sans overflow-hidden shadow-2xl ${
                 githubTheme === "dark"
@@ -954,7 +1089,7 @@ export default function BannerStudio() {
             </div>
           )}
 
-          {/* Quick Action Control Bar (Reroll & Presets) */}
+          {/* Quick Action Control Bar (Reroll, Fav Roll & Presets) */}
           <div className="flex flex-wrap items-center justify-between gap-3 bg-[#15171e] border border-[#232632] p-3 rounded-2xl">
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -965,6 +1100,25 @@ export default function BannerStudio() {
                 <span>Reroll Banner</span>
                 <span className="rounded bg-black/20 px-1 py-0.5 text-[10px] hidden sm:inline">R</span>
               </button>
+
+              {/* Roll from Favorites Toggle */}
+              {favorites.length > 0 && (
+                <button
+                  onClick={() => {
+                    setPinnedId(null);
+                    setRollFromFavs((prev) => !prev);
+                  }}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 font-mono text-xs transition-colors cursor-pointer border ${
+                    rollFromFavs
+                      ? "bg-rose-500 text-white font-bold border-rose-400 shadow-md shadow-rose-500/30"
+                      : "bg-[#0d0e12] text-rose-300 border-rose-500/30 hover:border-rose-400"
+                  }`}
+                  title="Cycle solely through your favorited banners"
+                >
+                  <Heart className={`h-3.5 w-3.5 ${rollFromFavs ? "fill-white" : "fill-rose-400"}`} />
+                  <span>{rollFromFavs ? `Rolling Favs (${favorites.length})` : `Roll Favs (${favorites.length})`}</span>
+                </button>
+              )}
 
               {/* Presets List */}
               <div className="flex flex-wrap items-center gap-1 rounded-xl bg-[#0d0e12] p-1 border border-[#232632]">
@@ -1012,7 +1166,7 @@ export default function BannerStudio() {
 
           {/* Controls: Dimensions, Crop & Multi-Language Rotation Pool */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            {/* Custom Dimensions & Crop (Col 5) */}
+            {/* Custom Dimensions & Attention Crop (Col 5) */}
             <div className="md:col-span-5 rounded-2xl border border-[#232632] bg-[#15171e] p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 font-mono text-xs font-bold text-[#e8e9ed]">
@@ -1059,19 +1213,38 @@ export default function BannerStudio() {
                 </div>
               </div>
 
-              {/* Smart Crop Selector */}
-              <div className="flex items-center justify-between rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632]">
-                <span className="font-mono text-xs text-[#8b90a0]">Attention Crop:</span>
+              {/* Smart Attention Crop Selector with Reset-to-Default */}
+              <div className="rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-xs text-[#e8e9ed] font-medium">Attention Crop:</span>
+                    <span className="font-mono text-[10px] text-pink-400 bg-pink-500/10 px-1.5 py-0.2 rounded border border-pink-500/20">
+                      Smart AI Focus
+                    </span>
+                  </div>
+                  {crop !== "attention" && (
+                    <button
+                      onClick={() => setCrop("attention")}
+                      className="flex items-center gap-1 font-mono text-[10px] text-pink-400 hover:underline cursor-pointer"
+                    >
+                      <Undo2 className="h-2.5 w-2.5" />
+                      <span>Reset to default</span>
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex gap-1">
                   {(["attention", "entropy", "center", "top"] as const).map((c) => (
                     <button
                       key={c}
                       onClick={() => setCrop(c)}
-                      className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors cursor-pointer ${
-                        crop === c ? "bg-pink-500 text-white font-bold" : "bg-[#15171e] text-[#8b90a0] hover:text-[#e8e9ed]"
+                      className={`flex-1 rounded py-1 font-mono text-[11px] transition-colors cursor-pointer text-center ${
+                        crop === c
+                          ? "bg-pink-500 text-white font-bold shadow-sm"
+                          : "bg-[#15171e] text-[#8b90a0] hover:text-[#e8e9ed]"
                       }`}
                     >
-                      {c}
+                      {c === "attention" ? "attention (def)" : c}
                     </button>
                   ))}
                 </div>
@@ -1107,18 +1280,38 @@ export default function BannerStudio() {
                   <Sparkles className="h-3.5 w-3.5 text-pink-400" />
                   <span>Rotation Pool (Multi-Select)</span>
                 </div>
-                {selectedPool.length > 0 && (
+                {rollFromFavs ? (
+                  <span className="font-mono text-[11px] text-rose-300">
+                    Active: {favorites.length} Saved Favs
+                  </span>
+                ) : selectedPool.length > 0 ? (
                   <button
                     onClick={() => setSelectedPool([])}
                     className="font-mono text-[11px] text-pink-400 hover:underline cursor-pointer"
                   >
                     Clear pool ({selectedPool.length})
                   </button>
-                )}
+                ) : null}
               </div>
 
+              {/* Roll from Favorites notice */}
+              {rollFromFavs && (
+                <div className="flex items-center justify-between rounded-xl bg-rose-500/15 border border-rose-500/30 p-2.5 font-mono text-xs text-rose-200">
+                  <div className="flex items-center gap-2">
+                    <Heart className="h-4 w-4 fill-rose-400 text-rose-400" />
+                    <span>Rolling exclusively from your {favorites.length} favorited covers.</span>
+                  </div>
+                  <button
+                    onClick={() => setRollFromFavs(false)}
+                    className="text-[11px] text-white underline cursor-pointer"
+                  >
+                    Switch to all
+                  </button>
+                </div>
+              )}
+
               {/* Auto-detected badge info with apply button */}
-              {autoDetectedLangs.length > 0 && (
+              {autoDetectedLangs.length > 0 && !rollFromFavs && (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-pink-500/10 border border-pink-500/25 p-2.5 font-mono text-xs">
                   <div className="flex items-center gap-1.5 text-pink-300">
                     <Cpu className="h-3.5 w-3.5 text-pink-400" />
@@ -1127,7 +1320,10 @@ export default function BannerStudio() {
                     </span>
                   </div>
                   <button
-                    onClick={() => setSelectedPool(autoDetectedLangs)}
+                    onClick={() => {
+                      setRollFromFavs(false);
+                      setSelectedPool(autoDetectedLangs);
+                    }}
                     className="rounded-lg bg-pink-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-pink-600 transition-colors cursor-pointer"
                   >
                     Select Detected Stack
@@ -1141,7 +1337,7 @@ export default function BannerStudio() {
 
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {POPULAR_TOPICS.map((topic) => {
-                  const isActive = selectedPool.includes(topic);
+                  const isActive = !rollFromFavs && selectedPool.includes(topic);
                   return (
                     <button
                       key={topic}
@@ -1160,13 +1356,13 @@ export default function BannerStudio() {
             </div>
           </div>
 
-          {/* Straightforward Setup Guide */}
+          {/* Setup Guide & Feature Clarification */}
           <div className="rounded-2xl border border-[#232632] bg-[#15171e] p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#232632] pb-3">
               <div>
                 <h3 className="font-mono text-sm font-bold text-[#e8e9ed]">How to add to your GitHub Profile</h3>
                 <p className="font-mono text-xs text-[#8b90a0] mt-0.5">
-                  Paste this snippet at line 1 in your <code className="text-pink-300">README.md</code>.
+                  Paste this snippet at line 1 in your profile repository <code className="text-pink-300">README.md</code>.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -1192,7 +1388,30 @@ export default function BannerStudio() {
               </pre>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between font-mono text-xs text-[#8b90a0]">
+            {/* Feature Guide Callouts: Pin & Attention Crop */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div className="flex items-start gap-2.5 rounded-xl bg-[#0d0e12] p-3 border border-[#232632] font-mono text-xs">
+                <Pin className="h-4 w-4 text-pink-400 mt-0.5 shrink-0" />
+                <div>
+                  <strong className="text-[#e8e9ed]">Pin Button:</strong>
+                  <p className="text-[#8b90a0] text-[11px] mt-0.5">
+                    Locks this specific cover with a permanent link (<code className="text-pink-300">?id=...</code>) instead of random rotation.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5 rounded-xl bg-[#0d0e12] p-3 border border-[#232632] font-mono text-xs">
+                <Sparkles className="h-4 w-4 text-pink-400 mt-0.5 shrink-0" />
+                <div>
+                  <strong className="text-[#e8e9ed]">Attention Crop:</strong>
+                  <p className="text-[#8b90a0] text-[11px] mt-0.5">
+                    Sharp edge-detection automatically centers on the anime character and book cover rather than cutting off heads.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between font-mono text-xs text-[#8b90a0] pt-2 border-t border-[#232632]">
               <div className="truncate">
                 Raw Endpoint: <span className="text-pink-300 select-all">{fullProductionUrl}</span>
               </div>

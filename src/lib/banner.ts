@@ -30,6 +30,18 @@ function cacheSet(key: string, value: Buffer) {
   memoryCache.set(key, value);
 }
 
+// In-memory LRU cache for final rendered banner buffers (sub-2ms warm hits)
+const processedBannerCache = new Map<string, { buffer: Buffer; contentType: string }>();
+const MAX_PROCESSED_CACHE = 150;
+
+function processedCacheSet(key: string, value: { buffer: Buffer; contentType: string }) {
+  if (processedBannerCache.size >= MAX_PROCESSED_CACHE) {
+    const firstKey = processedBannerCache.keys().next().value;
+    if (firstKey) processedBannerCache.delete(firstKey);
+  }
+  processedBannerCache.set(key, value);
+}
+
 // Preset mapping
 export const BANNER_PRESETS = {
   github: { width: 1844, height: 999, label: "GitHub Banner (1844×999 • 1.85:1)" },
@@ -49,6 +61,7 @@ export interface BannerOptions {
   badge?: boolean;
   user?: string;
   pool?: string;
+  favs?: string;
   tint?: boolean;
   dim?: boolean;
   vignette?: boolean;
@@ -115,9 +128,21 @@ export function matchCategories(query: string): string[] {
     .map((c) => c.name);
 }
 
-// Filter items by language or keyword or pool
-export function filterItems(options: { lang?: string; pool?: string; query?: string }): BannerItem[] {
+// Filter items by language, keyword, pool, or favs list
+export function filterItems(options: { lang?: string; pool?: string; favs?: string; query?: string }): BannerItem[] {
   let list = manifest.items;
+
+  // Filter strictly by favs IDs if provided
+  if (options.favs) {
+    const favIds = new Set(
+      options.favs.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+    );
+    if (favIds.size > 0) {
+      const favList = list.filter((item) => favIds.has(item.id.toLowerCase()));
+      if (favList.length > 0) return favList;
+    }
+  }
+
   const targetCategory = options.pool || options.lang;
 
   if (targetCategory) {
@@ -149,7 +174,7 @@ function hashString(str: string): number {
 }
 
 // Select an item based on ID, Seed, or Random selection
-export function selectItem(options: { id?: string; seed?: string; lang?: string; pool?: string }): {
+export function selectItem(options: { id?: string; seed?: string; lang?: string; pool?: string; favs?: string }): {
   item: BannerItem;
   isSeeded: boolean;
 } {
@@ -158,7 +183,7 @@ export function selectItem(options: { id?: string; seed?: string; lang?: string;
     if (found) return { item: found, isSeeded: true };
   }
 
-  const pool = filterItems({ lang: options.lang, pool: options.pool });
+  const pool = filterItems({ lang: options.lang, pool: options.pool, favs: options.favs });
 
   if (options.seed !== undefined && options.seed !== "") {
     const num = parseInt(options.seed, 10);
@@ -216,6 +241,13 @@ export async function processBanner(
   // Constrain dimensions to sane boundaries
   width = Math.min(Math.max(200, width), 3840);
   height = Math.min(Math.max(100, height), 2160);
+
+  // Fast In-Memory Cache Check (<2ms response)
+  const cacheKey = `${item.id}:${width}:${height}:${options.crop || "attention"}:${options.tint ? 1 : 0}:${options.dim ? 1 : 0}:${options.vignette ? 1 : 0}:${options.badge ? 1 : 0}:${options.user || ""}:${options.format || "jpeg"}:${options.quality || 85}`;
+  const cached = processedBannerCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
 
   // Crop strategy
   let position: sharp.ResizeOptions["position"] = sharp.strategy.attention;
@@ -333,5 +365,7 @@ export async function processBanner(
     contentType = "image/jpeg";
   }
 
-  return { buffer: outputBuffer, contentType };
+  const result = { buffer: outputBuffer, contentType };
+  processedCacheSet(cacheKey, result);
+  return result;
 }

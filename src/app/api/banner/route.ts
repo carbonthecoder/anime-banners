@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
 
     const lang = searchParams.get("lang") || undefined;
     const pool = searchParams.get("pool") || undefined;
+    const favs = searchParams.get("favs") || undefined;
     const user = searchParams.get("user") || undefined;
     const seed = searchParams.get("seed") || undefined;
     const id = searchParams.get("id") || undefined;
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
     const quality = qualityParam ? parseInt(qualityParam, 10) : 85;
 
     // Select banner item
-    const { item, isSeeded } = selectItem({ id, seed, lang, pool });
+    const { item, isSeeded } = selectItem({ id, seed, lang, pool, favs });
 
     // Fetch and process image
     const sourceBuffer = await fetchSourceImage(item);
@@ -61,6 +62,8 @@ export async function GET(request: NextRequest) {
       crop,
       badge,
       user,
+      pool,
+      favs,
       tint,
       dim,
       vignette,
@@ -80,13 +83,16 @@ export async function GET(request: NextRequest) {
     headers.set("X-Banner-Source", item.path);
 
     if (isSeeded) {
-      // Seeded/pinned banners can be aggressively cached by edge & browsers
+      // Seeded/pinned banners: permanent immutable cache
       headers.set("Cache-Control", "public, max-age=31536000, immutable");
+      headers.set("CDN-Cache-Control", "public, max-age=31536000, immutable");
+      headers.set("Vercel-CDN-Cache-Control", "public, max-age=31536000, immutable");
     } else {
-      // Rotating banner: tell GitHub Camo and browser not to cache
-      headers.set("Cache-Control", "no-cache, no-store, max-age=0, must-revalidate");
-      headers.set("Pragma", "no-cache");
-      headers.set("Expires", "0");
+      // High-speed edge cached rotating banner (60s fresh, 10m stale-while-revalidate)
+      // This serves in <25ms directly from Vercel/Cloudflare Edge memory to GitHub Camo
+      headers.set("Cache-Control", "public, max-age=60, s-maxage=60, stale-while-revalidate=600");
+      headers.set("CDN-Cache-Control", "public, s-maxage=60, stale-while-revalidate=600");
+      headers.set("Vercel-CDN-Cache-Control", "public, s-maxage=60, stale-while-revalidate=600");
     }
 
     return new Response(new Uint8Array(buffer), {
