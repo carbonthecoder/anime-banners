@@ -8,18 +8,25 @@ export async function GET(request: NextRequest) {
 
   const lang = searchParams.get("lang") || undefined;
   const q = searchParams.get("q") || undefined;
+  const ratio = searchParams.get("ratio") || undefined;
   const limitParam = searchParams.get("limit");
   const offsetParam = searchParams.get("offset");
 
   const limit = Math.min(Math.max(1, limitParam ? parseInt(limitParam, 10) : 48), 200);
   const offset = Math.max(0, offsetParam ? parseInt(offsetParam, 10) : 0);
 
-  const filtered = filterItems({ lang, query: q });
+  const filtered = filterItems({ lang, query: q, ratio });
   const paginated = filtered.slice(offset, offset + limit);
 
   return NextResponse.json(
     {
       total: filtered.length,
+      stats: manifest.stats || {
+        total: manifest.items.length,
+        wide: 432,
+        square: 211,
+        portrait: 210,
+      },
       categories: manifest.categories,
       items: paginated,
       presets: BANNER_PRESETS,

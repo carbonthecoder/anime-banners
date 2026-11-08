@@ -20,6 +20,7 @@ import {
   Cpu,
   Heart,
   Undo2,
+  Crop,
 } from "lucide-react";
 import { marked } from "marked";
 import manifestData from "@/data/banner_manifest.json";
@@ -36,6 +37,10 @@ interface BannerItem {
   title: string;
   cdn_url: string;
   raw_url: string;
+  width?: number;
+  height?: number;
+  aspect_ratio?: number;
+  orientation?: "wide" | "square" | "portrait";
 }
 
 interface GitHubProfile {
@@ -49,6 +54,7 @@ interface GitHubProfile {
 }
 
 const PRESETS = [
+  { id: "adaptive", label: "Adaptive (Original)", width: 0, height: 0, ratio: "Auto" },
   { id: "github", label: "GitHub Banner", width: 1844, height: 999, ratio: "1.85:1" },
   { id: "github-compact", label: "GitHub Compact", width: 1200, height: 400, ratio: "3:1" },
   { id: "twitter", label: "Twitter / X", width: 1500, height: 500, ratio: "3:1" },
@@ -79,8 +85,11 @@ const POPULAR_TOPICS = [
 ];
 
 export default function BannerStudio() {
-  // Preset & Dimensions
-  const [preset, setPreset] = useState("github");
+  // Preset, Dimensions & Aspect Ratio Filters
+  const [preset, setPreset] = useState("adaptive");
+  const [ratioFilter, setRatioFilter] = useState<"all" | "wide" | "square" | "portrait">("all");
+  const [catalogRatio, setCatalogRatio] = useState<"all" | "wide" | "square" | "portrait">("all");
+  const [activeImageAspect, setActiveImageAspect] = useState<number | null>(null);
   const [customW, setCustomW] = useState(1844);
   const [customH, setCustomH] = useState(999);
   const [crop, setCrop] = useState<"attention" | "center" | "entropy" | "top">("attention");
@@ -147,11 +156,15 @@ export default function BannerStudio() {
     category: string;
     title: string;
     source: string;
+    orientation?: string;
+    aspect?: number | null;
   }>({
     id: "rust-shikanoko-the-rust-programming-language",
     category: "Rust",
     title: "Shikanoko The Rust Programming Language",
     source: "Rust/Shikanoko-The-Rust-Programming-Language.png",
+    orientation: "wide",
+    aspect: 1.78,
   });
 
   // Catalog State
@@ -194,6 +207,11 @@ export default function BannerStudio() {
       setPreset("custom");
     }
 
+    const qRatio = urlParams.get("ratio");
+    if (qRatio && ["all", "wide", "square", "portrait"].includes(qRatio)) {
+      setRatioFilter(qRatio as "all" | "wide" | "square" | "portrait");
+    }
+
     const qCrop = urlParams.get("crop");
     if (qCrop && ["attention", "entropy", "center", "top"].includes(qCrop)) {
       setCrop(qCrop as "attention" | "entropy" | "center" | "top");
@@ -221,8 +239,12 @@ export default function BannerStudio() {
     if (preset === "custom") {
       params.set("w", customW.toString());
       params.set("h", customH.toString());
-    } else if (preset !== "github") {
+    } else if (preset !== "adaptive" && preset !== "github") {
       params.set("preset", preset);
+    }
+
+    if (ratioFilter !== "all") {
+      params.set("ratio", ratioFilter);
     }
 
     if (pinnedId) {
@@ -241,7 +263,7 @@ export default function BannerStudio() {
     const qs = params.toString();
     const newPath = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
     window.history.replaceState(null, "", newPath);
-  }, [preset, customW, customH, pinnedId, selectedPool, crop, tint, vignette]);
+  }, [preset, customW, customH, ratioFilter, pinnedId, selectedPool, crop, tint, vignette]);
 
   // Fetch real GitHub Profile and actual README
   const fetchGitHubUser = useCallback(async (username: string) => {
@@ -360,7 +382,7 @@ export default function BannerStudio() {
     if (preset === "custom") {
       params.set("w", customW.toString());
       params.set("h", customH.toString());
-    } else if (preset !== "github") {
+    } else if (preset !== "adaptive" && preset !== "github") {
       params.set("preset", preset);
     }
 
@@ -371,6 +393,10 @@ export default function BannerStudio() {
 
       if (selectedPool.length > 0) {
         params.set("pool", selectedPool.join(","));
+      }
+
+      if (ratioFilter !== "all") {
+        params.set("ratio", ratioFilter);
       }
     }
 
@@ -384,7 +410,7 @@ export default function BannerStudio() {
 
     const qs = params.toString();
     return `/api/banner${qs ? `?${qs}` : ""}`;
-  }, [preset, customW, customH, pinnedId, seed, selectedPool, crop, tint, dim, vignette]);
+  }, [preset, customW, customH, pinnedId, seed, selectedPool, ratioFilter, crop, tint, dim, vignette]);
 
   // Clean, short embed URL for README and API Endpoint (NO seed parameter!)
   const cleanEmbedUrl = useMemo(() => {
@@ -394,7 +420,7 @@ export default function BannerStudio() {
     if (preset === "custom") {
       params.set("w", customW.toString());
       params.set("h", customH.toString());
-    } else if (preset !== "github") {
+    } else if (preset !== "adaptive" && preset !== "github") {
       params.set("preset", preset);
     }
 
@@ -405,6 +431,10 @@ export default function BannerStudio() {
         params.set("favs", favorites.join(","));
       } else if (selectedPool.length > 0) {
         params.set("pool", selectedPool.join(","));
+      }
+
+      if (ratioFilter !== "all") {
+        params.set("ratio", ratioFilter);
       }
     }
 
@@ -418,7 +448,7 @@ export default function BannerStudio() {
 
     const qs = params.toString();
     return `${origin}/api/banner${qs ? `?${qs}` : ""}`;
-  }, [preset, customW, customH, pinnedId, rollFavsInSnippet, favorites, selectedPool, crop, tint, dim, vignette]);
+  }, [preset, customW, customH, pinnedId, rollFavsInSnippet, favorites, selectedPool, ratioFilter, crop, tint, dim, vignette]);
 
   // Sync metadata from response headers
   useEffect(() => {
@@ -432,8 +462,11 @@ export default function BannerStudio() {
           const cat = res.headers.get("x-banner-category") || "General";
           const title = decodeURIComponent(res.headers.get("x-banner-title") || "");
           const source = res.headers.get("x-banner-source") || "";
+          const orientation = res.headers.get("x-banner-orientation") || "";
+          const aspect = parseFloat(res.headers.get("x-banner-aspect-ratio") || "0") || null;
 
-          setCurrentMeta({ id, category: cat, title, source });
+          setCurrentMeta({ id, category: cat, title, source, orientation, aspect });
+          if (aspect) setActiveImageAspect(aspect);
         }
       })
       .catch(() => {})
@@ -448,17 +481,20 @@ export default function BannerStudio() {
 
   const reroll = useCallback(() => {
     setPinnedId(null);
+    setActiveImageAspect(null);
     setSeed(Math.floor(Math.random() * 1000000));
   }, []);
 
   const resetAllToDefault = useCallback(() => {
     setCrop("attention");
-    setPreset("github");
+    setPreset("adaptive");
+    setRatioFilter("all");
     setCustomW(1844);
     setCustomH(999);
     setTint(false);
     setDim(false);
     setVignette(false);
+    setActiveImageAspect(null);
   }, []);
 
   const toggleTopicInPool = (topic: string) => {
@@ -495,9 +531,10 @@ export default function BannerStudio() {
     touchStartX.current = null;
   };
 
-  // Catalog filtering
+  // Catalog filtering by ratio, category & query
   const filteredCatalog = useMemo(() => {
     return allItems.filter((item) => {
+      const matchRatio = catalogRatio === "all" ? true : item.orientation === catalogRatio;
       const matchCat =
         selectedCatalogCat === "All"
           ? true
@@ -508,9 +545,9 @@ export default function BannerStudio() {
         !searchQuery ||
         item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.category.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchCat && matchQuery;
+      return matchRatio && matchCat && matchQuery;
     });
-  }, [allItems, selectedCatalogCat, searchQuery, favorites]);
+  }, [allItems, catalogRatio, selectedCatalogCat, searchQuery, favorites]);
 
   const totalPages = Math.ceil(filteredCatalog.length / itemsPerPage);
   const paginatedCatalog = useMemo(() => {
@@ -518,10 +555,33 @@ export default function BannerStudio() {
     return filteredCatalog.slice(start, start + itemsPerPage);
   }, [filteredCatalog, catalogPage]);
 
-  // Exact Aspect Ratio matching active preset dimensions
-  const activeAspectRatio = useMemo(() => {
-    return `${customW} / ${customH}`;
-  }, [customW, customH]);
+  // Active item in manifest
+  const activeItem = useMemo(() => {
+    return allItems.find((i) => i.id === currentMeta.id) || null;
+  }, [allItems, currentMeta.id]);
+
+  // Exact adaptive aspect ratio matching active preset dimensions or image natural orientation
+  const currentAspect = useMemo(() => {
+    if (preset === "custom") {
+      return customW / customH;
+    }
+    const matchedPreset = PRESETS.find((p) => p.id === preset);
+    if (matchedPreset && matchedPreset.id !== "adaptive" && matchedPreset.width > 0 && matchedPreset.height > 0) {
+      return matchedPreset.width / matchedPreset.height;
+    }
+    if (activeItem?.aspect_ratio) {
+      return activeItem.aspect_ratio;
+    }
+    if (activeImageAspect) {
+      return activeImageAspect;
+    }
+    if (currentMeta.aspect) {
+      return currentMeta.aspect;
+    }
+    if (ratioFilter === "portrait") return 0.8;
+    if (ratioFilter === "square") return 1.0;
+    return 1844 / 999;
+  }, [preset, customW, customH, activeItem, activeImageAspect, currentMeta.aspect, ratioFilter]);
 
   // Clean Markdown & HTML Snippets
   const userHandle = ghProfile.login || "username";
@@ -530,9 +590,8 @@ export default function BannerStudio() {
 
   const isCustomizedFromDefault =
     crop !== "attention" ||
-    preset !== "github" ||
-    customW !== 1844 ||
-    customH !== 999 ||
+    preset !== "adaptive" ||
+    ratioFilter !== "all" ||
     tint ||
     dim ||
     vignette;
@@ -616,7 +675,7 @@ export default function BannerStudio() {
       {/* Main Viewport */}
       {viewMode === "catalog" ? (
         /* Fast Catalog Explorer */
-        <section className="space-y-6">
+        <section className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8b90a0]" />
@@ -682,6 +741,40 @@ export default function BannerStudio() {
             </div>
           </div>
 
+          {/* Aspect Ratio Filter Tabs (Wide, Square, Portrait, All) */}
+          <div className="flex items-center gap-2 overflow-x-auto p-1 rounded-xl bg-[#15171e] border border-[#232632] w-fit">
+            <span className="font-mono text-xs text-[#8b90a0] px-2 flex items-center gap-1 shrink-0">
+              <Crop className="h-3 w-3 text-pink-400" />
+              Ratio Type:
+            </span>
+            {(
+              [
+                { id: "all", label: "All Types", count: 853 },
+                { id: "wide", label: "Wide Banners", count: 432 },
+                { id: "square", label: "Square Covers", count: 211 },
+                { id: "portrait", label: "Portrait Covers", count: 210 },
+              ] as const
+            ).map((r) => (
+              <button
+                key={r.id}
+                onClick={() => {
+                  setCatalogRatio(r.id);
+                  setCatalogPage(1);
+                }}
+                className={`whitespace-nowrap px-3 py-1 rounded-lg font-mono text-xs transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  catalogRatio === r.id
+                    ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold shadow-sm"
+                    : "text-[#8b90a0] hover:text-[#e8e9ed] hover:bg-[#232632]/50"
+                }`}
+              >
+                <span>{r.label}</span>
+                <span className={`text-[10px] ${catalogRatio === r.id ? "text-white/80" : "text-[#55596b]"}`}>
+                  ({r.count})
+                </span>
+              </button>
+            ))}
+          </div>
+
           {filteredCatalog.length === 0 ? (
             <div className="rounded-2xl border border-[#232632] bg-[#15171e] p-12 text-center font-mono">
               <Heart className="mx-auto h-8 w-8 text-[#8b90a0] mb-2" />
@@ -705,6 +798,11 @@ export default function BannerStudio() {
                     }}
                     className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#232632] bg-[#15171e] hover:border-pink-500/50 transition-all hover:scale-[1.01]"
                   >
+                    {/* Ratio Badge */}
+                    <span className="absolute top-2 left-2 z-10 rounded-md bg-black/75 backdrop-blur-md px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-[#8b90a0] border border-white/10 group-hover:text-pink-300">
+                      {item.orientation || "wide"}
+                    </span>
+
                     {/* Favorite Button on Card */}
                     <button
                       onClick={(e) => {
@@ -721,17 +819,20 @@ export default function BannerStudio() {
                       <Heart className={`h-3 w-3 ${isFav ? "fill-white text-white" : ""}`} />
                     </button>
 
-                    <div className="aspect-[16/10] overflow-hidden bg-black/40">
+                    <div className="aspect-[4/3] overflow-hidden bg-black/40 flex items-center justify-center p-2">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={item.cdn_url}
                         alt={item.title}
                         loading="eager"
-                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
                       />
                     </div>
                     <div className="p-2.5">
-                      <div className="font-mono text-[10px] text-pink-400 font-bold">{item.category}</div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-[10px] text-pink-400 font-bold">{item.category}</span>
+                        <span className="font-mono text-[9px] text-[#55596b]">{item.aspect_ratio ? `${item.aspect_ratio}:1` : ""}</span>
+                      </div>
                       <div className="font-mono text-xs text-[#e8e9ed] truncate">{item.title}</div>
                     </div>
                   </div>
@@ -818,13 +919,17 @@ export default function BannerStudio() {
 
           {/* Viewport Stages */}
           {viewMode === "canvas" ? (
-            /* Clean Full-Bleed Banner Canvas in Exact Aspect Ratio */
-            <div className="relative overflow-hidden rounded-2xl border border-[#232632] bg-[#0d0e12] shadow-2xl">
+            /* Clean Adaptive Banner Canvas in Exact Aspect Ratio */
+            <div className="relative overflow-hidden rounded-2xl border border-[#232632] bg-[#0d0e12] shadow-2xl p-2 sm:p-4">
               <div
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
-                style={{ aspectRatio: activeAspectRatio }}
-                className="relative w-full overflow-hidden bg-[#0d0e12] flex items-center justify-center select-none"
+                style={{
+                  aspectRatio: `${currentAspect}`,
+                  maxHeight: "560px",
+                  maxWidth: currentAspect < 1.0 ? `${Math.round(560 * currentAspect)}px` : "100%",
+                }}
+                className="relative mx-auto w-full overflow-hidden bg-[#0d0e12] flex items-center justify-center select-none rounded-xl transition-all duration-300"
               >
                 {/* Shiny Left-to-Right Shimmer Sweep while loading */}
                 {isLoading && (
@@ -838,8 +943,13 @@ export default function BannerStudio() {
                   key={bannerApiUrl}
                   src={bannerApiUrl}
                   alt={currentMeta.title}
-                  className="h-full w-full object-cover transition-opacity duration-200"
-                  onLoad={() => setIsLoading(false)}
+                  className="h-full w-full object-contain transition-opacity duration-200"
+                  onLoad={(e) => {
+                    setIsLoading(false);
+                    if (e.currentTarget.naturalWidth && e.currentTarget.naturalHeight) {
+                      setActiveImageAspect(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight);
+                    }
+                  }}
                 />
 
                 <div className="absolute top-3 right-3 sm:hidden rounded-full bg-black/60 backdrop-blur-md px-2.5 py-0.5 font-mono text-[10px] text-pink-300 border border-white/10">
@@ -847,13 +957,18 @@ export default function BannerStudio() {
                 </div>
               </div>
 
-              {/* Banner Footer Info: Category, Title & Direct Source Link (Image 5) */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-[#232632] bg-[#15171e] px-4 py-3">
+              {/* Banner Footer Info: Category, Title, Orientation & Direct Source Link */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-[#232632] bg-[#15171e] px-4 py-3 mt-2 rounded-xl">
                 <div className="min-w-0 flex-1 space-y-0.5">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-xs font-bold text-pink-400">{currentMeta.category}</span>
                     <span className="text-[#8b90a0]">·</span>
                     <span className="font-mono text-xs text-[#e8e9ed] font-medium truncate">{currentMeta.title}</span>
+                    {currentMeta.orientation && (
+                      <span className="rounded bg-[#232632] px-1.5 py-0.5 font-mono text-[10px] text-pink-300 capitalize border border-pink-500/20">
+                        {currentMeta.orientation} {currentMeta.aspect ? `(${currentMeta.aspect}:1)` : ""}
+                      </span>
+                    )}
                   </div>
                   {currentMeta.source && (
                     <a
@@ -903,7 +1018,7 @@ export default function BannerStudio() {
                     }`}
                     title="Lock this cover so it stays permanently rather than rotating"
                   >
-                    <Pin className="h-3 w-3" />
+                    <Pin className={`h-3 w-3 ${pinnedId ? "rotate-45 text-pink-400" : ""}`} />
                     <span>{pinnedId ? "Pinned" : "Pin"}</span>
                   </button>
 
@@ -999,13 +1114,13 @@ export default function BannerStudio() {
 
                     <div className="p-4 sm:p-6 space-y-4">
                       {/* Live Banner at the top of the README */}
-                      <div className="overflow-hidden rounded-md border border-zinc-700/40 shadow-sm">
+                      <div className="overflow-hidden rounded-md border border-zinc-700/40 shadow-sm flex items-center justify-center bg-black/20">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           key={`desktop-${bannerApiUrl}`}
                           src={bannerApiUrl}
                           alt="Anime Banner"
-                          className="w-full h-auto object-cover"
+                          className="w-full h-auto max-h-[440px] object-contain"
                         />
                       </div>
 
@@ -1113,7 +1228,7 @@ export default function BannerStudio() {
             </div>
           )}
 
-          {/* Quick Action Control Bar */}
+          {/* Quick Action Control Bar: Reroll, Aspect Ratio Filter, Presets & Copy */}
           <div className="flex flex-wrap items-center justify-between gap-3 bg-[#15171e] border border-[#232632] p-3 rounded-2xl">
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -1124,6 +1239,39 @@ export default function BannerStudio() {
                 <span>Reroll Banner</span>
               </button>
 
+              {/* Aspect Ratio Filter (Wide, Square, Portrait, All) */}
+              <div className="flex items-center gap-1 rounded-xl bg-[#0d0e12] p-1 border border-[#232632]">
+                <span className="font-mono text-[11px] text-[#8b90a0] px-2 hidden sm:inline">Ratio:</span>
+                {(
+                  [
+                    { id: "all", label: "All", count: 853 },
+                    { id: "wide", label: "Wide", count: 432 },
+                    { id: "square", label: "Square", count: 211 },
+                    { id: "portrait", label: "Portrait", count: 210 },
+                  ] as const
+                ).map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => {
+                      setRatioFilter(r.id);
+                      setPinnedId(null);
+                      setActiveImageAspect(null);
+                      setSeed(Math.floor(Math.random() * 1000000));
+                    }}
+                    className={`rounded-lg px-2.5 py-1 font-mono text-xs transition-colors cursor-pointer flex items-center gap-1.5 ${
+                      ratioFilter === r.id
+                        ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold shadow-sm"
+                        : "text-[#8b90a0] hover:text-[#e8e9ed]"
+                    }`}
+                  >
+                    <span>{r.label}</span>
+                    <span className={`text-[10px] ${ratioFilter === r.id ? "text-white/80" : "text-[#55596b]"}`}>
+                      ({r.count})
+                    </span>
+                  </button>
+                ))}
+              </div>
+
               {/* Presets List */}
               <div className="flex flex-wrap items-center gap-1 rounded-xl bg-[#0d0e12] p-1 border border-[#232632]">
                 {PRESETS.map((p) => (
@@ -1131,7 +1279,7 @@ export default function BannerStudio() {
                     key={p.id}
                     onClick={() => {
                       setPreset(p.id);
-                      if (p.id !== "custom") {
+                      if (p.id !== "custom" && p.id !== "adaptive") {
                         setCustomW(p.width);
                         setCustomH(p.height);
                       }
@@ -1221,16 +1369,14 @@ export default function BannerStudio() {
               <div className="rounded-xl bg-[#0d0e12] p-2.5 border border-[#232632] space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-xs text-[#e8e9ed] font-medium">Attention Crop:</span>
-                  {isCustomizedFromDefault && (
-                    <button
-                      onClick={resetAllToDefault}
-                      className="flex items-center gap-1 font-mono text-[10px] text-pink-400 hover:underline cursor-pointer"
-                      title="Reset crop and dimensions to default GitHub banner"
-                    >
-                      <Undo2 className="h-2.5 w-2.5" />
-                      <span>Reset to default</span>
-                    </button>
-                  )}
+                  <button
+                    onClick={resetAllToDefault}
+                    className="flex items-center gap-1 font-mono text-[10px] text-pink-400 hover:underline cursor-pointer"
+                    title="Reset crop, ratio and dimensions to natural original proportions"
+                  >
+                    <Undo2 className="h-2.5 w-2.5" />
+                    <span>Reset to default</span>
+                  </button>
                 </div>
 
                 <div className="flex gap-1">

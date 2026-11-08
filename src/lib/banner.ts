@@ -8,11 +8,16 @@ export interface BannerItem {
   title: string;
   cdn_url: string;
   raw_url: string;
+  width?: number;
+  height?: number;
+  aspect_ratio?: number;
+  orientation?: "wide" | "square" | "portrait";
 }
 
 export interface BannerManifest {
   total: number;
   categories: { name: string; count: number }[];
+  stats?: { total: number; wide: number; square: number; portrait: number };
   items: BannerItem[];
 }
 
@@ -49,6 +54,8 @@ export const BANNER_PRESETS = {
   twitter: { width: 1500, height: 500, label: "Twitter / X (1500×500 • 3:1)" },
   discord: { width: 680, height: 240, label: "Discord Profile (680×240 • 2.83:1)" },
   "discord-server": { width: 960, height: 540, label: "Discord Server (960×540 • 16:9)" },
+  square: { width: 1000, height: 1000, label: "Square Cover (1000×1000 • 1:1)" },
+  portrait: { width: 800, height: 1000, label: "Portrait Cover (800×1000 • 4:5)" },
 } as const;
 
 export type PresetKey = keyof typeof BANNER_PRESETS;
@@ -57,6 +64,7 @@ export interface BannerOptions {
   width?: number;
   height?: number;
   preset?: PresetKey | string;
+  ratio?: "wide" | "square" | "portrait" | "all";
   crop?: "attention" | "entropy" | "center" | "top";
   badge?: boolean;
   user?: string;
@@ -128,8 +136,14 @@ export function matchCategories(query: string): string[] {
     .map((c) => c.name);
 }
 
-// Filter items by language, keyword, pool, or favs list
-export function filterItems(options: { lang?: string; pool?: string; favs?: string; query?: string }): BannerItem[] {
+// Filter items by language, keyword, pool, favs list, or aspect ratio
+export function filterItems(options: {
+  lang?: string;
+  pool?: string;
+  favs?: string;
+  query?: string;
+  ratio?: string;
+}): BannerItem[] {
   let list = manifest.items;
 
   // Filter strictly by favs IDs if provided
@@ -139,7 +153,16 @@ export function filterItems(options: { lang?: string; pool?: string; favs?: stri
     );
     if (favIds.size > 0) {
       const favList = list.filter((item) => favIds.has(item.id.toLowerCase()));
-      if (favList.length > 0) return favList;
+      if (favList.length > 0) list = favList;
+    }
+  }
+
+  // Filter by aspect ratio orientation (wide, square, portrait)
+  if (options.ratio && options.ratio !== "all") {
+    const targetOrientation = options.ratio.toLowerCase().trim();
+    const ratioList = list.filter((item) => item.orientation === targetOrientation);
+    if (ratioList.length > 0) {
+      list = ratioList;
     }
   }
 
@@ -149,15 +172,17 @@ export function filterItems(options: { lang?: string; pool?: string; favs?: stri
     const matchedCats = matchCategories(targetCategory);
     if (matchedCats.length > 0) {
       const catSet = new Set(matchedCats.map((c) => c.toLowerCase()));
-      list = list.filter((item) => catSet.has(item.category.toLowerCase()));
+      const catList = list.filter((item) => catSet.has(item.category.toLowerCase()));
+      if (catList.length > 0) list = catList;
     }
   }
 
   if (options.query) {
     const q = options.query.toLowerCase();
-    list = list.filter(
+    const queryList = list.filter(
       (item) => item.title.toLowerCase().includes(q) || item.category.toLowerCase().includes(q)
     );
+    if (queryList.length > 0) list = queryList;
   }
 
   return list.length > 0 ? list : manifest.items;
@@ -174,7 +199,14 @@ function hashString(str: string): number {
 }
 
 // Select an item based on ID, Seed, or Random selection
-export function selectItem(options: { id?: string; seed?: string; lang?: string; pool?: string; favs?: string }): {
+export function selectItem(options: {
+  id?: string;
+  seed?: string;
+  lang?: string;
+  pool?: string;
+  favs?: string;
+  ratio?: string;
+}): {
   item: BannerItem;
   isSeeded: boolean;
 } {
@@ -183,7 +215,12 @@ export function selectItem(options: { id?: string; seed?: string; lang?: string;
     if (found) return { item: found, isSeeded: true };
   }
 
-  const pool = filterItems({ lang: options.lang, pool: options.pool, favs: options.favs });
+  const pool = filterItems({
+    lang: options.lang,
+    pool: options.pool,
+    favs: options.favs,
+    ratio: options.ratio,
+  });
 
   if (options.seed !== undefined && options.seed !== "") {
     const num = parseInt(options.seed, 10);
@@ -228,14 +265,33 @@ export async function processBanner(
   item: BannerItem,
   options: BannerOptions
 ): Promise<{ buffer: Buffer; contentType: string }> {
-  // Determine width & height
-  let width = options.width || 1844;
-  let height = options.height || 999;
+  // Determine width & height based on item aspect ratio & orientation
+  const itemRatio = item.aspect_ratio || (item.width && item.height ? item.width / item.height : 1.78);
+  const isPortrait = item.orientation === "portrait" || itemRatio < 0.85;
+  const isSquare = item.orientation === "square" || (itemRatio >= 0.85 && itemRatio < 1.25);
 
-  if (options.preset && options.preset in BANNER_PRESETS) {
+  let width: number;
+  let height: number;
+
+  if (options.width && options.height) {
+    width = options.width;
+    height = options.height;
+  } else if (options.preset && options.preset in BANNER_PRESETS) {
     const p = BANNER_PRESETS[options.preset as PresetKey];
     width = p.width;
     height = p.height;
+  } else if (isPortrait || options.ratio === "portrait") {
+    // Preserve natural proportions so portrait illustrations (character & book) are NEVER sliced
+    height = 1000;
+    width = Math.round(1000 * itemRatio);
+  } else if (isSquare || options.ratio === "square") {
+    // Square proportion
+    height = 1000;
+    width = Math.round(1000 * itemRatio);
+  } else {
+    // Standard wide banner
+    width = 1844;
+    height = 999;
   }
 
   // Constrain dimensions to sane boundaries

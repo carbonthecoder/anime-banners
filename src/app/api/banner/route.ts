@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     const lang = searchParams.get("lang") || undefined;
     const pool = searchParams.get("pool") || undefined;
     const favs = searchParams.get("favs") || undefined;
+    const ratio = searchParams.get("ratio") || undefined;
     const user = searchParams.get("user") || undefined;
     const seed = searchParams.get("seed") || undefined;
     const id = searchParams.get("id") || undefined;
@@ -50,8 +51,8 @@ export async function GET(request: NextRequest) {
     const qualityParam = searchParams.get("q") || searchParams.get("quality");
     const quality = qualityParam ? parseInt(qualityParam, 10) : 85;
 
-    // Select banner item
-    const { item, isSeeded } = selectItem({ id, seed, lang, pool, favs });
+    // Select banner item with aspect ratio filtering support
+    const { item, isSeeded } = selectItem({ id, seed, lang, pool, favs, ratio });
 
     // Fetch and process image
     const sourceBuffer = await fetchSourceImage(item);
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
       width,
       height,
       preset,
+      ratio: (["wide", "square", "portrait", "all"].includes(ratio || "") ? ratio : undefined) as BannerOptions["ratio"],
       crop,
       badge,
       user,
@@ -81,6 +83,10 @@ export async function GET(request: NextRequest) {
     headers.set("X-Banner-Category", item.category);
     headers.set("X-Banner-Title", encodeURIComponent(item.title));
     headers.set("X-Banner-Source", item.path);
+    if (item.orientation) headers.set("X-Banner-Orientation", item.orientation);
+    if (item.aspect_ratio) headers.set("X-Banner-Aspect-Ratio", item.aspect_ratio.toString());
+    if (item.width) headers.set("X-Banner-Width", item.width.toString());
+    if (item.height) headers.set("X-Banner-Height", item.height.toString());
 
     if (isSeeded) {
       // Seeded/pinned banners: permanent immutable cache
