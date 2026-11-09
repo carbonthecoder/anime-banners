@@ -989,7 +989,11 @@ export default function BannerStudio() {
                   key={activeImgSrc}
                   src={activeImgSrc}
                   alt={currentMeta.title}
-                  className="h-full w-full object-contain transition-opacity duration-200"
+                  className={`h-full w-full transition-opacity duration-200 ${
+                    preset === "adaptive"
+                      ? "object-contain"
+                      : `object-cover ${crop === "top" ? "object-top" : "object-center"}`
+                  }`}
                   onLoad={(e) => {
                     setIsLoading(false);
                     if (e.currentTarget.naturalWidth && e.currentTarget.naturalHeight) {
@@ -1458,26 +1462,31 @@ export default function BannerStudio() {
                     {p.label}
                   </button>
                 ))}
+
+                {preset === "custom" && (
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#15171e] border border-pink-500/40 text-xs font-mono ml-1">
+                    <span className="text-[#8b90a0] text-[11px]">W:</span>
+                    <input
+                      type="number"
+                      min="200"
+                      max="3840"
+                      value={customW}
+                      onChange={(e) => setCustomW(parseInt(e.target.value, 10) || 1600)}
+                      className="w-14 bg-transparent text-[#e8e9ed] font-mono text-xs focus:outline-none border-b border-pink-500/50 text-center"
+                    />
+                    <span className="text-[#8b90a0] text-[11px]">× H:</span>
+                    <input
+                      type="number"
+                      min="100"
+                      max="2160"
+                      value={customH}
+                      onChange={(e) => setCustomH(parseInt(e.target.value, 10) || 800)}
+                      className="w-14 bg-transparent text-[#e8e9ed] font-mono text-xs focus:outline-none border-b border-pink-500/50 text-center"
+                    />
+                    <span className="text-[10px] text-pink-400">px</span>
+                  </div>
+                )}
               </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={copyShareableLink}
-                className="flex items-center gap-1.5 rounded-xl bg-[#0d0e12] border border-[#232632] px-3 py-2 font-mono text-xs text-[#e8e9ed] hover:border-pink-500/50 transition-colors cursor-pointer"
-                title="Copy shareable link with current filters"
-              >
-                {copiedFormat === "share" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Share2 className="h-3.5 w-3.5 text-pink-400" />}
-                <span>{copiedFormat === "share" ? "Link Copied!" : "Share Link"}</span>
-              </button>
-
-              <button
-                onClick={() => copyToClipboard(markdownSnippet, "markdown")}
-                className="flex items-center gap-1.5 rounded-xl bg-pink-500 px-3.5 py-2 font-mono text-xs font-bold text-white hover:bg-pink-600 transition-colors cursor-pointer shadow-sm"
-              >
-                {copiedFormat === "markdown" ? <Check className="h-3.5 w-3.5 text-white" /> : <Copy className="h-3.5 w-3.5" />}
-                <span>{copiedFormat === "markdown" ? "Copied!" : "Copy Markdown"}</span>
-              </button>
             </div>
           </div>
 
