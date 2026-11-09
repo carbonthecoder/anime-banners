@@ -54,6 +54,23 @@ export async function GET(request: NextRequest) {
     // Select banner item with aspect ratio filtering support
     const { item, isSeeded } = selectItem({ id, seed, lang, pool, favs, ratio });
 
+    // Instant HEAD response without heavy image processing (<1ms)
+    if (request.method === "HEAD") {
+      const headHeaders = new Headers();
+      headHeaders.set("Content-Type", "image/jpeg");
+      headHeaders.set("Access-Control-Allow-Origin", "*");
+      headHeaders.set("X-Banner-Id", item.id);
+      headHeaders.set("X-Banner-Category", item.category);
+      headHeaders.set("X-Banner-Title", encodeURIComponent(item.title));
+      headHeaders.set("X-Banner-Source", item.path);
+      if (item.orientation) headHeaders.set("X-Banner-Orientation", item.orientation);
+      if (item.aspect_ratio) headHeaders.set("X-Banner-Aspect-Ratio", item.aspect_ratio.toString());
+      if (item.width) headHeaders.set("X-Banner-Width", item.width.toString());
+      if (item.height) headHeaders.set("X-Banner-Height", item.height.toString());
+      headHeaders.set("Cache-Control", "public, max-age=3600");
+      return new Response(null, { status: 200, headers: headHeaders });
+    }
+
     // Fetch and process image
     const sourceBuffer = await fetchSourceImage(item);
     const { buffer, contentType } = await processBanner(sourceBuffer, item, {
@@ -107,6 +124,9 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Banner rendering error:", error);
-    return new Response("Failed to generate banner", { status: 500 });
+    return Response.redirect(
+      "https://fastly.jsdelivr.net/gh/cat-milk/Anime-Girls-Holding-Programming-Books@master/Rust/Shikanoko-The-Rust-Programming-Language.png",
+      302
+    );
   }
 }

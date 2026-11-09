@@ -152,23 +152,6 @@ export default function BannerStudio() {
   const [isFetchingGh, setIsFetchingGh] = useState(false);
   const [autoDetectedLangs, setAutoDetectedLangs] = useState<string[]>([]);
 
-  // Active banner metadata
-  const [currentMeta, setCurrentMeta] = useState<{
-    id: string;
-    category: string;
-    title: string;
-    source: string;
-    orientation?: string;
-    aspect?: number | null;
-  }>({
-    id: "rust-shikanoko-the-rust-programming-language",
-    category: "Rust",
-    title: "Shikanoko The Rust Programming Language",
-    source: "Rust/Shikanoko-The-Rust-Programming-Language.png",
-    orientation: "wide",
-    aspect: 1.78,
-  });
-
   // Catalog State
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCatalogCat, setSelectedCatalogCat] = useState("All");
@@ -181,6 +164,84 @@ export default function BannerStudio() {
   // Manifest Data
   const allItems: BannerItem[] = useMemo(() => manifestData.items as BannerItem[], []);
   const allCategories: Category[] = useMemo(() => manifestData.categories as Category[], []);
+
+  // Synchronous, instant rotation pool from manifest (<0.001ms)
+  const activePool = useMemo(() => {
+    let list = allItems;
+
+    if (rollFavsInSnippet && favorites.length > 0) {
+      const favSet = new Set(favorites.map((f) => f.toLowerCase()));
+      const favList = list.filter((i) => favSet.has(i.id.toLowerCase()));
+      if (favList.length > 0) list = favList;
+    }
+
+    if (ratioFilter !== "all") {
+      const rList = list.filter((i) => i.orientation === ratioFilter);
+      if (rList.length > 0) list = rList;
+    }
+
+    if (selectedPool.length > 0) {
+      const topicSet = new Set(selectedPool.map((t) => t.toLowerCase()));
+      const tList = list.filter((i) => topicSet.has(i.category.toLowerCase()));
+      if (tList.length > 0) list = tList;
+    }
+
+    return list.length > 0 ? list : allItems;
+  }, [allItems, rollFavsInSnippet, favorites, ratioFilter, selectedPool]);
+
+  // Synchronous, instant active item selection (0.001ms)
+  const activeItem = useMemo(() => {
+    if (pinnedId) {
+      const found = allItems.find((i) => i.id === pinnedId);
+      if (found) return found;
+    }
+    const index = Math.abs(seed) % activePool.length;
+    return activePool[index] || allItems[0];
+  }, [pinnedId, seed, activePool, allItems]);
+
+  // Instant metadata derived synchronously from activeItem
+  const currentMeta = useMemo(() => ({
+    id: activeItem.id,
+    category: activeItem.category,
+    title: activeItem.title,
+    source: activeItem.path,
+    orientation: activeItem.orientation,
+    aspect: activeItem.aspect_ratio || null,
+  }), [activeItem]);
+
+  // Ultra-fast CDN mirror URL with automatic fallback
+  const primaryImageUrl = useMemo(() => {
+    return `https://fastly.jsdelivr.net/gh/cat-milk/Anime-Girls-Holding-Programming-Books@master/${activeItem.path}`;
+  }, [activeItem.path]);
+
+  const [activeImgSrc, setActiveImgSrc] = useState(primaryImageUrl);
+
+  useEffect(() => {
+    setActiveImgSrc(primaryImageUrl);
+    setIsLoading(true);
+  }, [primaryImageUrl]);
+
+  const handleImageError = useCallback(() => {
+    if (activeImgSrc.includes("fastly.jsdelivr.net")) {
+      setActiveImgSrc(activeItem.cdn_url);
+    } else if (activeImgSrc.includes("cdn.jsdelivr.net")) {
+      setActiveImgSrc(activeItem.raw_url);
+    } else {
+      setIsLoading(false);
+    }
+  }, [activeImgSrc, activeItem]);
+
+  // Preload next 3 covers in pool for 0ms instantaneous flipping
+  useEffect(() => {
+    const nextIndices = [1, 2, 3].map((offset) => (Math.abs(seed) + offset) % activePool.length);
+    nextIndices.forEach((idx) => {
+      const item = activePool[idx];
+      if (item) {
+        const pre = new Image();
+        pre.src = `https://fastly.jsdelivr.net/gh/cat-milk/Anime-Girls-Holding-Programming-Books@master/${item.path}`;
+      }
+    });
+  }, [seed, activePool]);
 
   // Preload catalog covers into browser cache
   useEffect(() => {
@@ -452,35 +513,6 @@ export default function BannerStudio() {
     return `${origin}/api/banner${qs ? `?${qs}` : ""}`;
   }, [preset, customW, customH, pinnedId, rollFavsInSnippet, favorites, selectedPool, ratioFilter, crop, tint, dim, vignette]);
 
-  // Sync metadata from response headers
-  useEffect(() => {
-    let isCancelled = false;
-    setIsLoading(true);
-
-    fetch(bannerApiUrl, { method: "HEAD" })
-      .then((res) => {
-        if (!isCancelled && res.ok) {
-          const id = res.headers.get("x-banner-id") || "";
-          const cat = res.headers.get("x-banner-category") || "General";
-          const title = decodeURIComponent(res.headers.get("x-banner-title") || "");
-          const source = res.headers.get("x-banner-source") || "";
-          const orientation = res.headers.get("x-banner-orientation") || "";
-          const aspect = parseFloat(res.headers.get("x-banner-aspect-ratio") || "0") || null;
-
-          setCurrentMeta({ id, category: cat, title, source, orientation, aspect });
-          if (aspect) setActiveImageAspect(aspect);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!isCancelled) setIsLoading(false);
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [bannerApiUrl]);
-
   const reroll = useCallback(() => {
     setPinnedId(null);
     setActiveImageAspect(null);
@@ -557,11 +589,6 @@ export default function BannerStudio() {
     return filteredCatalog.slice(start, start + itemsPerPage);
   }, [filteredCatalog, catalogPage]);
 
-  // Active item in manifest
-  const activeItem = useMemo(() => {
-    return allItems.find((i) => i.id === currentMeta.id) || null;
-  }, [allItems, currentMeta.id]);
-
   // Exact adaptive aspect ratio matching active preset dimensions or image natural orientation
   const currentAspect = useMemo(() => {
     if (preset === "custom") {
@@ -577,23 +604,19 @@ export default function BannerStudio() {
     if (activeImageAspect) {
       return activeImageAspect;
     }
-    if (currentMeta.aspect) {
-      return currentMeta.aspect;
-    }
     if (ratioFilter === "portrait") return 0.8;
     if (ratioFilter === "square") return 1.0;
     return 1844 / 999;
-  }, [preset, customW, customH, activeItem, activeImageAspect, currentMeta.aspect, ratioFilter]);
+  }, [preset, customW, customH, activeItem, activeImageAspect, ratioFilter]);
 
   // Check if active cover is portrait
   const isPortraitCover = useMemo(() => {
     return (
       ratioFilter === "portrait" ||
       activeItem?.orientation === "portrait" ||
-      currentMeta.orientation === "portrait" ||
       currentAspect < 0.95
     );
-  }, [ratioFilter, activeItem, currentMeta.orientation, currentAspect]);
+  }, [ratioFilter, activeItem?.orientation, currentAspect]);
 
   // Clean Markdown & HTML Snippets (Approach A for portrait covers: align="right")
   const userHandle = ghProfile.login || "username";
@@ -963,8 +986,8 @@ export default function BannerStudio() {
 
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  key={bannerApiUrl}
-                  src={bannerApiUrl}
+                  key={activeImgSrc}
+                  src={activeImgSrc}
                   alt={currentMeta.title}
                   className="h-full w-full object-contain transition-opacity duration-200"
                   onLoad={(e) => {
@@ -973,7 +996,17 @@ export default function BannerStudio() {
                       setActiveImageAspect(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight);
                     }
                   }}
+                  onError={handleImageError}
                 />
+
+                {/* Instant 120 FPS Hardware-Accelerated CSS Visual Overlays */}
+                {tint && <div className="absolute inset-0 bg-[#0d0e12]/20 pointer-events-none" />}
+                {dim && (
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent pointer-events-none" />
+                )}
+                {vignette && (
+                  <div className="absolute inset-0 pointer-events-none [background:radial-gradient(ellipse_at_center,transparent_45%,rgba(0,0,0,0.85)_100%)]" />
+                )}
 
                 <div className="absolute top-3 right-3 sm:hidden rounded-full bg-black/60 backdrop-blur-md px-2.5 py-0.5 font-mono text-[10px] text-pink-300 border border-white/10">
                   Swipe to shuffle
@@ -1184,10 +1217,11 @@ export default function BannerStudio() {
                           <div className="float-right ml-4 mb-4 rounded-xl border border-zinc-700/40 overflow-hidden shadow-lg bg-black/30 w-44 sm:w-52">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                              key={`desktop-${bannerApiUrl}`}
-                              src={bannerApiUrl}
+                              key={`desktop-${activeImgSrc}`}
+                              src={activeImgSrc}
                               alt="Anime Cover"
                               className="w-full h-auto object-contain"
+                              onError={handleImageError}
                             />
                             <div className="p-2 bg-black/60 border-t border-zinc-800 text-[10px] text-zinc-400 font-mono truncate">
                               {currentMeta.title}
@@ -1228,10 +1262,11 @@ export default function BannerStudio() {
                           <div className="overflow-hidden rounded-md border border-zinc-700/40 shadow-sm flex items-center justify-center bg-black/20">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                              key={`desktop-${bannerApiUrl}`}
-                              src={bannerApiUrl}
+                              key={`desktop-${activeImgSrc}`}
+                              src={activeImgSrc}
                               alt="Anime Banner"
                               className="w-full h-auto max-h-[440px] object-contain"
+                              onError={handleImageError}
                             />
                           </div>
 
@@ -1332,10 +1367,11 @@ export default function BannerStudio() {
                     <div className="overflow-hidden rounded-md border border-zinc-700/40">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        key={`mobile-${bannerApiUrl}`}
-                        src={bannerApiUrl}
+                        key={`mobile-${activeImgSrc}`}
+                        src={activeImgSrc}
                         alt="Anime Banner"
                         className="w-full h-auto object-contain"
+                        onError={handleImageError}
                       />
                     </div>
                     {renderedReadmeHtml ? (

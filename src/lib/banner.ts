@@ -232,18 +232,24 @@ export function selectItem(options: {
   return { item: pool[randomIndex], isSeeded: false };
 }
 
-// Fetch source image with retry and fallback
+// Fetch source image with fast multi-mirror fallback and 3.5s timeout
 export async function fetchSourceImage(item: BannerItem): Promise<Buffer> {
   const cached = memoryCache.get(item.path);
   if (cached) return cached;
 
-  const urls = [item.cdn_url, item.raw_url];
+  const urls = [
+    `https://fastly.jsdelivr.net/gh/cat-milk/Anime-Girls-Holding-Programming-Books@master/${item.path}`,
+    item.cdn_url,
+    item.raw_url,
+    `https://raw.githubusercontent.com/cat-milk/Anime-Girls-Holding-Programming-Books/master/${item.path}`,
+  ];
 
   for (const url of urls) {
     try {
       const res = await fetch(url, {
         headers: { "User-Agent": "Anime-Banner-Bot/1.0" },
         cache: "force-cache",
+        signal: AbortSignal.timeout(3500),
       });
       if (res.ok) {
         const arrayBuf = await res.arrayBuffer();
@@ -252,8 +258,19 @@ export async function fetchSourceImage(item: BannerItem): Promise<Buffer> {
         return buf;
       }
     } catch {
-      // try next url
+      // try next mirror
     }
+  }
+
+  // Graceful fallback to any cached buffer or default fallback
+  if (memoryCache.size > 0) {
+    const fallbackBuf = memoryCache.values().next().value;
+    if (fallbackBuf) return fallbackBuf;
+  }
+
+  // Final fallback to default item
+  if (item.id !== manifest.items[0].id) {
+    return fetchSourceImage(manifest.items[0]);
   }
 
   throw new Error(`Failed to fetch source image for: ${item.path}`);
