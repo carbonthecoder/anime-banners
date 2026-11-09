@@ -56,12 +56,10 @@ interface GitHubProfile {
 
 const PRESETS = [
   { id: "adaptive", label: "Adaptive (Original)", width: 0, height: 0, ratio: "Auto" },
-  { id: "github", label: "GitHub Banner", width: 1844, height: 999, ratio: "1.85:1" },
+  { id: "github", label: "GitHub (16:9)", width: 1920, height: 1080, ratio: "16:9" },
   { id: "github-compact", label: "GitHub Compact", width: 1200, height: 400, ratio: "3:1" },
   { id: "twitter", label: "Twitter / X", width: 1500, height: 500, ratio: "3:1" },
-  { id: "discord", label: "Discord Profile", width: 680, height: 240, ratio: "2.83:1" },
-  { id: "discord-server", label: "Discord Server", width: 960, height: 540, ratio: "16:9" },
-  { id: "custom", label: "Custom Size", width: 1600, height: 800, ratio: "Custom" },
+  { id: "discord", label: "Discord Profile", width: 600, height: 240, ratio: "5:2" },
 ];
 
 const POPULAR_TOPICS = [
@@ -91,8 +89,8 @@ export default function BannerStudio() {
   const [ratioFilter, setRatioFilter] = useState<"all" | "wide" | "square" | "portrait">("all");
   const [catalogRatio, setCatalogRatio] = useState<"all" | "wide" | "square" | "portrait">("all");
   const [activeImageAspect, setActiveImageAspect] = useState<number | null>(null);
-  const [customW, setCustomW] = useState(1844);
-  const [customH, setCustomH] = useState(999);
+  const [customW, setCustomW] = useState(1920);
+  const [customH, setCustomH] = useState(1080);
   const [portraitLayout, setPortraitLayout] = useState<"side" | "top">("side");
   const [crop, setCrop] = useState<"attention" | "center" | "entropy" | "top">("attention");
 
@@ -523,8 +521,8 @@ export default function BannerStudio() {
     setCrop("attention");
     setPreset("adaptive");
     setRatioFilter("all");
-    setCustomW(1844);
-    setCustomH(999);
+    setCustomW(1920);
+    setCustomH(1080);
     setTint(false);
     setDim(false);
     setVignette(false);
@@ -606,7 +604,7 @@ export default function BannerStudio() {
     }
     if (ratioFilter === "portrait") return 0.8;
     if (ratioFilter === "square") return 1.0;
-    return 1844 / 999;
+    return 16 / 9;
   }, [preset, customW, customH, activeItem, activeImageAspect, ratioFilter]);
 
   // Check if active cover is portrait
@@ -1462,30 +1460,6 @@ export default function BannerStudio() {
                     {p.label}
                   </button>
                 ))}
-
-                {preset === "custom" && (
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#15171e] border border-pink-500/40 text-xs font-mono ml-1">
-                    <span className="text-[#8b90a0] text-[11px]">W:</span>
-                    <input
-                      type="number"
-                      min="200"
-                      max="3840"
-                      value={customW}
-                      onChange={(e) => setCustomW(parseInt(e.target.value, 10) || 1600)}
-                      className="w-14 bg-transparent text-[#e8e9ed] font-mono text-xs focus:outline-none border-b border-pink-500/50 text-center"
-                    />
-                    <span className="text-[#8b90a0] text-[11px]">× H:</span>
-                    <input
-                      type="number"
-                      min="100"
-                      max="2160"
-                      value={customH}
-                      onChange={(e) => setCustomH(parseInt(e.target.value, 10) || 800)}
-                      className="w-14 bg-transparent text-[#e8e9ed] font-mono text-xs focus:outline-none border-b border-pink-500/50 text-center"
-                    />
-                    <span className="text-[10px] text-pink-400">px</span>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -1499,14 +1473,30 @@ export default function BannerStudio() {
                   <SlidersHorizontal className="h-3.5 w-3.5 text-pink-400" />
                   <span>Custom Dimensions</span>
                 </div>
-                <span className="font-mono text-[11px] text-[#8b90a0]">
-                  {customW} × {customH}
-                </span>
+                <div className="flex items-center gap-2">
+                  {preset === "custom" ? (
+                    <span className="rounded bg-pink-500/20 px-1.5 py-0.5 font-mono text-[10px] text-pink-300 border border-pink-500/40">
+                      Active
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setPreset("custom")}
+                      className="font-mono text-[10px] text-[#8b90a0] hover:text-pink-400 transition-colors cursor-pointer"
+                    >
+                      Use Custom
+                    </button>
+                  )}
+                  <span className="font-mono text-[11px] text-[#8b90a0]">
+                    {customW} × {customH}
+                  </span>
+                </div>
               </div>
 
               {/* W & H Inputs */}
               <div className="grid grid-cols-2 gap-2">
-                <div className="flex items-center gap-2 rounded-xl bg-[#0d0e12] px-3 py-2 border border-[#232632]">
+                <div className={`flex items-center gap-2 rounded-xl bg-[#0d0e12] px-3 py-2 border transition-colors ${
+                  preset === "custom" ? "border-pink-500/50" : "border-[#232632]"
+                }`}>
                   <span className="font-mono text-xs text-[#8b90a0]">W:</span>
                   <input
                     type="number"
@@ -1514,7 +1504,7 @@ export default function BannerStudio() {
                     max="3840"
                     value={customW}
                     onChange={(e) => {
-                      setCustomW(parseInt(e.target.value, 10) || 1844);
+                      setCustomW(parseInt(e.target.value, 10) || 1920);
                       setPreset("custom");
                     }}
                     className="w-full bg-transparent font-mono text-xs text-[#e8e9ed] focus:outline-none"
@@ -1522,7 +1512,9 @@ export default function BannerStudio() {
                   <span className="font-mono text-[10px] text-[#8b90a0]">px</span>
                 </div>
 
-                <div className="flex items-center gap-2 rounded-xl bg-[#0d0e12] px-3 py-2 border border-[#232632]">
+                <div className={`flex items-center gap-2 rounded-xl bg-[#0d0e12] px-3 py-2 border transition-colors ${
+                  preset === "custom" ? "border-pink-500/50" : "border-[#232632]"
+                }`}>
                   <span className="font-mono text-xs text-[#8b90a0]">H:</span>
                   <input
                     type="number"
@@ -1530,7 +1522,7 @@ export default function BannerStudio() {
                     max="2160"
                     value={customH}
                     onChange={(e) => {
-                      setCustomH(parseInt(e.target.value, 10) || 999);
+                      setCustomH(parseInt(e.target.value, 10) || 1080);
                       setPreset("custom");
                     }}
                     className="w-full bg-transparent font-mono text-xs text-[#e8e9ed] focus:outline-none"
