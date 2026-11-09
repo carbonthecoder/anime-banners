@@ -52,7 +52,7 @@ export const BANNER_PRESETS = {
   github: { width: 1844, height: 999, label: "GitHub Banner (1844×999 • 1.85:1)" },
   "github-compact": { width: 1200, height: 400, label: "GitHub Compact (1200×400 • 3:1)" },
   twitter: { width: 1500, height: 500, label: "Twitter / X (1500×500 • 3:1)" },
-  discord: { width: 680, height: 240, label: "Discord Profile (680×240 • 2.83:1)" },
+  discord: { width: 600, height: 240, label: "Discord Profile (600×240 • 5:2)" },
   "discord-server": { width: 960, height: 540, label: "Discord Server (960×540 • 16:9)" },
   square: { width: 1000, height: 1000, label: "Square Cover (1000×1000 • 1:1)" },
   portrait: { width: 800, height: 1000, label: "Portrait Cover (800×1000 • 4:5)" },
@@ -293,6 +293,9 @@ export async function processBanner(
   if (options.width && options.height) {
     width = options.width;
     height = options.height;
+  } else if (options.preset === "adaptive") {
+    height = 1000;
+    width = Math.round(1000 * itemRatio);
   } else if (options.preset && options.preset in BANNER_PRESETS) {
     const p = BANNER_PRESETS[options.preset as PresetKey];
     width = p.width;

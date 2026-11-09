@@ -55,8 +55,8 @@ interface GitHubProfile {
 }
 
 const PRESETS = [
+  { id: "github", label: "GitHub Banner", width: 1844, height: 999, ratio: "1.85:1" },
   { id: "adaptive", label: "Adaptive (Original)", width: 0, height: 0, ratio: "Auto" },
-  { id: "github", label: "GitHub (16:9)", width: 1920, height: 1080, ratio: "16:9" },
   { id: "github-compact", label: "GitHub Compact", width: 1200, height: 400, ratio: "3:1" },
   { id: "twitter", label: "Twitter / X", width: 1500, height: 500, ratio: "3:1" },
   { id: "discord", label: "Discord Profile", width: 600, height: 240, ratio: "5:2" },
@@ -85,14 +85,15 @@ const POPULAR_TOPICS = [
 
 export default function BannerStudio() {
   // Preset, Dimensions & Aspect Ratio Filters
-  const [preset, setPreset] = useState("adaptive");
+  const [preset, setPreset] = useState("github");
   const [ratioFilter, setRatioFilter] = useState<"all" | "wide" | "square" | "portrait">("all");
   const [catalogRatio, setCatalogRatio] = useState<"all" | "wide" | "square" | "portrait">("all");
   const [activeImageAspect, setActiveImageAspect] = useState<number | null>(null);
-  const [customW, setCustomW] = useState(1920);
-  const [customH, setCustomH] = useState(1080);
+  const [customW, setCustomW] = useState(1844);
+  const [customH, setCustomH] = useState(999);
   const [portraitLayout, setPortraitLayout] = useState<"side" | "top">("side");
   const [crop, setCrop] = useState<"attention" | "center" | "entropy" | "top">("attention");
+  const [ghUserNotFound, setGhUserNotFound] = useState(false);
 
   // Rotation Pool, Favorites & Visual Overlays
   const [selectedPool, setSelectedPool] = useState<string[]>([]);
@@ -300,7 +301,7 @@ export default function BannerStudio() {
     if (preset === "custom") {
       params.set("w", customW.toString());
       params.set("h", customH.toString());
-    } else if (preset !== "adaptive" && preset !== "github") {
+    } else if (preset !== "github") {
       params.set("preset", preset);
     }
 
@@ -333,26 +334,29 @@ export default function BannerStudio() {
     setIsFetchingGh(true);
     setRealReadme("");
     setAutoDetectedLangs([]);
+    setGhUserNotFound(false);
 
     try {
       const res = await fetch(`https://api.github.com/users/${encodeURIComponent(cleanUser)}`);
       if (res.ok) {
         const data = await res.json();
+        setGhUserNotFound(false);
         setGhProfile({
           login: data.login,
           name: data.name || data.login,
           avatar_url: data.avatar_url || `https://avatars.githubusercontent.com/${cleanUser}`,
-          bio: data.bio || "Developer building things on GitHub.",
+          bio: data.bio || "",
           followers: data.followers || 0,
           following: data.following || 0,
           public_repos: data.public_repos || 0,
         });
       } else {
+        setGhUserNotFound(true);
         setGhProfile({
           login: cleanUser,
           name: cleanUser,
           avatar_url: `https://avatars.githubusercontent.com/${cleanUser}`,
-          bio: "Developer on GitHub.",
+          bio: "",
           followers: 0,
           following: 0,
           public_repos: 0,
@@ -413,11 +417,13 @@ export default function BannerStudio() {
         // Continue gracefully
       }
     } catch {
+      setGhUserNotFound(true);
       setGhProfile((prev) => ({
         ...prev,
         login: cleanUser,
         name: cleanUser,
         avatar_url: `https://avatars.githubusercontent.com/${cleanUser}`,
+        bio: "",
       }));
       setRealReadme("");
     } finally {
@@ -443,7 +449,7 @@ export default function BannerStudio() {
     if (preset === "custom") {
       params.set("w", customW.toString());
       params.set("h", customH.toString());
-    } else if (preset !== "adaptive" && preset !== "github") {
+    } else if (preset !== "github") {
       params.set("preset", preset);
     }
 
@@ -481,7 +487,7 @@ export default function BannerStudio() {
     if (preset === "custom") {
       params.set("w", customW.toString());
       params.set("h", customH.toString());
-    } else if (preset !== "adaptive" && preset !== "github") {
+    } else if (preset !== "github") {
       params.set("preset", preset);
     }
 
@@ -519,10 +525,10 @@ export default function BannerStudio() {
 
   const resetAllToDefault = useCallback(() => {
     setCrop("attention");
-    setPreset("adaptive");
+    setPreset("github");
     setRatioFilter("all");
-    setCustomW(1920);
-    setCustomH(1080);
+    setCustomW(1844);
+    setCustomH(999);
     setTint(false);
     setDim(false);
     setVignette(false);
@@ -604,7 +610,7 @@ export default function BannerStudio() {
     }
     if (ratioFilter === "portrait") return 0.8;
     if (ratioFilter === "square") return 1.0;
-    return 16 / 9;
+    return 1844 / 999;
   }, [preset, customW, customH, activeItem, activeImageAspect, ratioFilter]);
 
   // Check if active cover is portrait
@@ -620,14 +626,14 @@ export default function BannerStudio() {
   const userHandle = ghProfile.login || "username";
   const markdownSnippet = useMemo(() => {
     if (isPortraitCover && portraitLayout === "side") {
-      return `<a href="https://github.com/${userHandle}">\n  <img src="${cleanEmbedUrl}" align="right" width="240" alt="Anime Programming Cover" />\n</a>\n\n# Hi there, I'm @${userHandle} 👋`;
+      return `<a href="https://github.com/${userHandle}">\n  <img src="${cleanEmbedUrl}" align="right" width="240" alt="Anime Programming Cover" />\n</a>`;
     }
     return `[![Banner](${cleanEmbedUrl})](https://github.com/${userHandle})`;
   }, [isPortraitCover, portraitLayout, cleanEmbedUrl, userHandle]);
 
   const htmlSnippet = useMemo(() => {
     if (isPortraitCover && portraitLayout === "side") {
-      return `<a href="https://github.com/${userHandle}">\n  <img src="${cleanEmbedUrl}" align="right" width="240" alt="Anime Programming Cover" />\n</a>\n\n<h1>Hi there, I'm @${userHandle} 👋</h1>`;
+      return `<a href="https://github.com/${userHandle}">\n  <img src="${cleanEmbedUrl}" align="right" width="240" alt="Anime Programming Cover" />\n</a>`;
     }
     return `<a href="https://github.com/${userHandle}">\n  <img src="${cleanEmbedUrl}" width="100%" alt="Anime Programming Banner" />\n</a>`;
   }, [isPortraitCover, portraitLayout, cleanEmbedUrl, userHandle]);
@@ -936,6 +942,12 @@ export default function BannerStudio() {
                 >
                   {isFetchingGh ? "..." : "Fetch"}
                 </button>
+                {ghUserNotFound && (
+                  <span className="font-mono text-xs text-rose-400 font-semibold flex items-center gap-1 ml-1">
+                    <span>⚠️</span>
+                    <span>User not available</span>
+                  </span>
+                )}
               </div>
 
               {/* Theme Toggle for GitHub Mockup (Dark vs Light Mode) */}
@@ -1171,8 +1183,18 @@ export default function BannerStudio() {
                     </div>
 
                     <div className="p-4 sm:p-6 space-y-4">
-                      {/* Notice if user does NOT have a profile README */}
-                      {!realReadme && (
+                      {/* Notice if user is not available or does NOT have a profile README */}
+                      {ghUserNotFound ? (
+                        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3.5 space-y-1 font-mono">
+                          <div className="flex items-center gap-2 text-rose-400 font-bold text-xs">
+                            <span>⚠️</span>
+                            <span>User not available: @{ghProfile.login}</span>
+                          </div>
+                          <p className="text-[11px] text-[#8b90a0]">
+                            This username could not be found on GitHub. Check the spelling or enter another handle.
+                          </p>
+                        </div>
+                      ) : !realReadme && (
                         <div className="rounded-xl border border-dashed border-[#30363d] bg-black/30 p-3.5 space-y-2.5 font-mono">
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <div className="flex items-center gap-2">
@@ -1231,31 +1253,13 @@ export default function BannerStudio() {
                           </div>
 
                           {/* Profile Content flowing alongside the floated cover */}
-                          {renderedReadmeHtml ? (
+                          {renderedReadmeHtml && (
                             <div
                               className={`github-readme-body ${
                                 githubTheme === "dark" ? "text-[#e6edf3]" : "text-[#1f2328]"
                               }`}
                               dangerouslySetInnerHTML={{ __html: renderedReadmeHtml }}
                             />
-                          ) : (
-                            <div className="space-y-3 font-sans">
-                              <h3 className="text-xl font-bold">Hi, I&apos;m {ghProfile.name} 👋</h3>
-                              <p className="text-xs text-[#8d96a0] leading-relaxed">
-                                {ghProfile.bio || "Full-stack developer building open source projects on GitHub."}
-                              </p>
-                              <div className="pt-2 flex flex-wrap gap-2">
-                                <span className="rounded-full bg-pink-500/10 text-pink-300 border border-pink-500/25 px-2.5 py-0.5 text-xs font-mono">
-                                  {currentMeta.category}
-                                </span>
-                                <span className="rounded-full bg-zinc-800/80 text-zinc-300 px-2.5 py-0.5 text-xs font-mono">
-                                  {ghProfile.public_repos} Repos
-                                </span>
-                                <span className="rounded-full bg-zinc-800/80 text-zinc-300 px-2.5 py-0.5 text-xs font-mono">
-                                  {ghProfile.followers} Followers
-                                </span>
-                              </div>
-                            </div>
                           )}
                         </div>
                       ) : (
@@ -1273,21 +1277,13 @@ export default function BannerStudio() {
                           </div>
 
                           {/* Real User's Profile README Content */}
-                          {renderedReadmeHtml ? (
+                          {renderedReadmeHtml && (
                             <div
                               className={`github-readme-body border-t pt-4 ${
                                 githubTheme === "dark" ? "border-[#30363d] text-[#e6edf3]" : "border-[#d0d7de] text-[#1f2328]"
                               }`}
                               dangerouslySetInnerHTML={{ __html: renderedReadmeHtml }}
                             />
-                          ) : (
-                            <div className="border-t border-zinc-700/20 pt-4 space-y-2">
-                              <h3 className="text-base font-semibold">Hi, I&apos;m {ghProfile.name} 👋</h3>
-                              <p className="text-xs text-[#8d96a0]">
-                                Welcome to my profile. This banner updates with fresh covers from{" "}
-                                <span className="text-pink-400 font-mono">Anime-Girls-Holding-Programming-Books</span>.
-                              </p>
-                            </div>
                           )}
                         </>
                       )}
@@ -1350,8 +1346,13 @@ export default function BannerStudio() {
                   </div>
 
                   <div className="p-3 space-y-3">
-                    {/* Notice if user has no profile README */}
-                    {!realReadme && (
+                    {/* Notice if user is not available or has no profile README */}
+                    {ghUserNotFound ? (
+                      <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-2.5 font-mono text-[10px] text-rose-400 font-medium flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>User not available: @{ghProfile.login}</span>
+                      </div>
+                    ) : !realReadme && (
                       <div className="rounded-lg border border-dashed border-[#30363d] bg-black/40 p-2.5 space-y-1.5 font-mono text-[10px]">
                         <div className="text-amber-400 font-medium flex items-center gap-1">
                           <span>⚠️</span>
@@ -1376,18 +1377,13 @@ export default function BannerStudio() {
                         onError={handleImageError}
                       />
                     </div>
-                    {renderedReadmeHtml ? (
+                    {renderedReadmeHtml && (
                       <div
                         className={`github-readme-body text-[11px] border-t pt-3 ${
                           githubTheme === "dark" ? "border-[#30363d] text-[#e6edf3]" : "border-[#d0d7de] text-[#1f2328]"
                         }`}
                         dangerouslySetInnerHTML={{ __html: renderedReadmeHtml }}
                       />
-                    ) : (
-                      <div className="space-y-1 border-t border-zinc-700/20 pt-3">
-                        <div className="text-xs font-semibold">Hi, I&apos;m {ghProfile.name} 👋</div>
-                        <div className="text-[11px] text-[#8d96a0]">Real README preview for mobile visitors.</div>
-                      </div>
                     )}
                   </div>
                 </div>
