@@ -21,6 +21,7 @@ import {
   Heart,
   Undo2,
   Crop,
+  ChevronDown,
 } from "lucide-react";
 import { marked } from "marked";
 import manifestData from "@/data/banner_manifest.json";
@@ -92,6 +93,7 @@ export default function BannerStudio() {
   const [activeImageAspect, setActiveImageAspect] = useState<number | null>(null);
   const [customW, setCustomW] = useState(1844);
   const [customH, setCustomH] = useState(999);
+  const [portraitLayout, setPortraitLayout] = useState<"side" | "top">("side");
   const [crop, setCrop] = useState<"attention" | "center" | "entropy" | "top">("attention");
 
   // Rotation Pool, Favorites & Visual Overlays
@@ -583,10 +585,31 @@ export default function BannerStudio() {
     return 1844 / 999;
   }, [preset, customW, customH, activeItem, activeImageAspect, currentMeta.aspect, ratioFilter]);
 
-  // Clean Markdown & HTML Snippets
+  // Check if active cover is portrait
+  const isPortraitCover = useMemo(() => {
+    return (
+      ratioFilter === "portrait" ||
+      activeItem?.orientation === "portrait" ||
+      currentMeta.orientation === "portrait" ||
+      currentAspect < 0.95
+    );
+  }, [ratioFilter, activeItem, currentMeta.orientation, currentAspect]);
+
+  // Clean Markdown & HTML Snippets (Approach A for portrait covers: align="right")
   const userHandle = ghProfile.login || "username";
-  const markdownSnippet = `[![Banner](${cleanEmbedUrl})](https://github.com/${userHandle})`;
-  const htmlSnippet = `<a href="https://github.com/${userHandle}">\n  <img src="${cleanEmbedUrl}" width="100%" alt="Anime Programming Banner" />\n</a>`;
+  const markdownSnippet = useMemo(() => {
+    if (isPortraitCover && portraitLayout === "side") {
+      return `<a href="https://github.com/${userHandle}">\n  <img src="${cleanEmbedUrl}" align="right" width="240" alt="Anime Programming Cover" />\n</a>\n\n# Hi there, I'm @${userHandle} 👋`;
+    }
+    return `[![Banner](${cleanEmbedUrl})](https://github.com/${userHandle})`;
+  }, [isPortraitCover, portraitLayout, cleanEmbedUrl, userHandle]);
+
+  const htmlSnippet = useMemo(() => {
+    if (isPortraitCover && portraitLayout === "side") {
+      return `<a href="https://github.com/${userHandle}">\n  <img src="${cleanEmbedUrl}" align="right" width="240" alt="Anime Programming Cover" />\n</a>\n\n<h1>Hi there, I'm @${userHandle} 👋</h1>`;
+    }
+    return `<a href="https://github.com/${userHandle}">\n  <img src="${cleanEmbedUrl}" width="100%" alt="Anime Programming Banner" />\n</a>`;
+  }, [isPortraitCover, portraitLayout, cleanEmbedUrl, userHandle]);
 
   const isCustomizedFromDefault =
     crop !== "attention" ||
@@ -1113,33 +1136,123 @@ export default function BannerStudio() {
                     </div>
 
                     <div className="p-4 sm:p-6 space-y-4">
-                      {/* Live Banner at the top of the README */}
-                      <div className="overflow-hidden rounded-md border border-zinc-700/40 shadow-sm flex items-center justify-center bg-black/20">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          key={`desktop-${bannerApiUrl}`}
-                          src={bannerApiUrl}
-                          alt="Anime Banner"
-                          className="w-full h-auto max-h-[440px] object-contain"
-                        />
-                      </div>
+                      {/* Notice if user does NOT have a profile README */}
+                      {!realReadme && (
+                        <div className="rounded-xl border border-dashed border-[#30363d] bg-black/30 p-3.5 space-y-2.5 font-mono">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <span className="text-amber-400 text-sm">⚠️</span>
+                              <span className="text-xs text-[#e8e9ed] font-medium">
+                                @{ghProfile.login} doesn&apos;t have a profile README.md yet.
+                              </span>
+                            </div>
+                            <a
+                              href={`https://github.com/new?name=${encodeURIComponent(ghProfile.login)}&public=true`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 rounded-lg bg-pink-500/15 text-pink-300 border border-pink-500/30 px-2.5 py-1 text-[11px] hover:bg-pink-500 hover:text-white transition-colors"
+                            >
+                              <span>Create @{ghProfile.login} Repo</span>
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          </div>
 
-                      {/* Real User's Profile README Content */}
-                      {renderedReadmeHtml ? (
-                        <div
-                          className={`github-readme-body border-t pt-4 ${
-                            githubTheme === "dark" ? "border-[#30363d] text-[#e6edf3]" : "border-[#d0d7de] text-[#1f2328]"
-                          }`}
-                          dangerouslySetInnerHTML={{ __html: renderedReadmeHtml }}
-                        />
-                      ) : (
-                        <div className="border-t border-zinc-700/20 pt-4 space-y-2">
-                          <h3 className="text-base font-semibold">Hi, I&apos;m {ghProfile.name} 👋</h3>
-                          <p className="text-xs text-[#8d96a0]">
-                            Welcome to my profile. This banner updates with fresh covers from{" "}
-                            <span className="text-pink-400 font-mono">Anime-Girls-Holding-Programming-Books</span>.
-                          </p>
+                          <details className="group text-xs text-[#8b90a0] cursor-pointer">
+                            <summary className="flex items-center gap-1.5 text-pink-400 hover:underline select-none">
+                              <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
+                              <span>Click to expand setup procedure (3 simple steps)</span>
+                            </summary>
+                            <div className="mt-2.5 pl-3 border-l-2 border-pink-500/40 space-y-1.5 text-[11px] text-[#8b90a0] font-sans">
+                              <p>
+                                <strong className="text-white font-mono">1. Create Repo:</strong> Go to GitHub and create a public repository named exactly <code className="text-pink-300 font-mono">{ghProfile.login}</code>.
+                              </p>
+                              <p>
+                                <strong className="text-white font-mono">2. Initialize README:</strong> Check &quot;Add a README file&quot; and click &quot;Create repository&quot;.
+                              </p>
+                              <p>
+                                <strong className="text-white font-mono">3. Add Anime Banner:</strong> Paste the snippet below into line 1 of your <code className="text-pink-300 font-mono">README.md</code>, commit, and your banner will be live!
+                              </p>
+                            </div>
+                          </details>
                         </div>
+                      )}
+
+                      {/* Approach A: Side-Floated Layout for Portrait Covers */}
+                      {isPortraitCover && portraitLayout === "side" ? (
+                        <div className="overflow-hidden">
+                          {/* Floated right character cover */}
+                          <div className="float-right ml-4 mb-4 rounded-xl border border-zinc-700/40 overflow-hidden shadow-lg bg-black/30 w-44 sm:w-52">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              key={`desktop-${bannerApiUrl}`}
+                              src={bannerApiUrl}
+                              alt="Anime Cover"
+                              className="w-full h-auto object-contain"
+                            />
+                            <div className="p-2 bg-black/60 border-t border-zinc-800 text-[10px] text-zinc-400 font-mono truncate">
+                              {currentMeta.title}
+                            </div>
+                          </div>
+
+                          {/* Profile Content flowing alongside the floated cover */}
+                          {renderedReadmeHtml ? (
+                            <div
+                              className={`github-readme-body ${
+                                githubTheme === "dark" ? "text-[#e6edf3]" : "text-[#1f2328]"
+                              }`}
+                              dangerouslySetInnerHTML={{ __html: renderedReadmeHtml }}
+                            />
+                          ) : (
+                            <div className="space-y-3 font-sans">
+                              <h3 className="text-xl font-bold">Hi, I&apos;m {ghProfile.name} 👋</h3>
+                              <p className="text-xs text-[#8d96a0] leading-relaxed">
+                                {ghProfile.bio || "Full-stack developer building open source projects on GitHub."}
+                              </p>
+                              <div className="pt-2 flex flex-wrap gap-2">
+                                <span className="rounded-full bg-pink-500/10 text-pink-300 border border-pink-500/25 px-2.5 py-0.5 text-xs font-mono">
+                                  {currentMeta.category}
+                                </span>
+                                <span className="rounded-full bg-zinc-800/80 text-zinc-300 px-2.5 py-0.5 text-xs font-mono">
+                                  {ghProfile.public_repos} Repos
+                                </span>
+                                <span className="rounded-full bg-zinc-800/80 text-zinc-300 px-2.5 py-0.5 text-xs font-mono">
+                                  {ghProfile.followers} Followers
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        /* Top Full-Width Banner Layout for Wide or Centered */
+                        <>
+                          <div className="overflow-hidden rounded-md border border-zinc-700/40 shadow-sm flex items-center justify-center bg-black/20">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              key={`desktop-${bannerApiUrl}`}
+                              src={bannerApiUrl}
+                              alt="Anime Banner"
+                              className="w-full h-auto max-h-[440px] object-contain"
+                            />
+                          </div>
+
+                          {/* Real User's Profile README Content */}
+                          {renderedReadmeHtml ? (
+                            <div
+                              className={`github-readme-body border-t pt-4 ${
+                                githubTheme === "dark" ? "border-[#30363d] text-[#e6edf3]" : "border-[#d0d7de] text-[#1f2328]"
+                              }`}
+                              dangerouslySetInnerHTML={{ __html: renderedReadmeHtml }}
+                            />
+                          ) : (
+                            <div className="border-t border-zinc-700/20 pt-4 space-y-2">
+                              <h3 className="text-base font-semibold">Hi, I&apos;m {ghProfile.name} 👋</h3>
+                              <p className="text-xs text-[#8d96a0]">
+                                Welcome to my profile. This banner updates with fresh covers from{" "}
+                                <span className="text-pink-400 font-mono">Anime-Girls-Holding-Programming-Books</span>.
+                              </p>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -1200,13 +1313,29 @@ export default function BannerStudio() {
                   </div>
 
                   <div className="p-3 space-y-3">
+                    {/* Notice if user has no profile README */}
+                    {!realReadme && (
+                      <div className="rounded-lg border border-dashed border-[#30363d] bg-black/40 p-2.5 space-y-1.5 font-mono text-[10px]">
+                        <div className="text-amber-400 font-medium flex items-center gap-1">
+                          <span>⚠️</span>
+                          <span>@{ghProfile.login} has no README.md</span>
+                        </div>
+                        <details className="text-[10px] text-[#8b90a0]">
+                          <summary className="text-pink-400 cursor-pointer">How to create (3 steps)</summary>
+                          <p className="mt-1 pl-2 border-l border-pink-500/40 text-[9px] leading-tight text-[#8b90a0]">
+                            Create public repo <code className="text-pink-300">{ghProfile.login}</code> with README.md and paste snippet!
+                          </p>
+                        </details>
+                      </div>
+                    )}
+
                     <div className="overflow-hidden rounded-md border border-zinc-700/40">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         key={`mobile-${bannerApiUrl}`}
                         src={bannerApiUrl}
                         alt="Anime Banner"
-                        className="w-full h-auto object-cover"
+                        className="w-full h-auto object-contain"
                       />
                     </div>
                     {renderedReadmeHtml ? (
@@ -1515,6 +1644,34 @@ export default function BannerStudio() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {isPortraitCover && (
+                  <div className="flex items-center gap-1 rounded-lg bg-[#0d0e12] p-1 border border-[#232632]">
+                    <span className="font-mono text-[10px] text-[#8b90a0] px-1.5 hidden sm:inline">Layout:</span>
+                    <button
+                      onClick={() => setPortraitLayout("side")}
+                      className={`px-2 py-1 rounded font-mono text-[11px] transition-colors cursor-pointer ${
+                        portraitLayout === "side"
+                          ? "bg-pink-500 text-white font-semibold"
+                          : "text-[#8b90a0] hover:text-[#e8e9ed]"
+                      }`}
+                      title="Floats the cover on the right side of your README intro text"
+                    >
+                      Side Card (align=&quot;right&quot;)
+                    </button>
+                    <button
+                      onClick={() => setPortraitLayout("top")}
+                      className={`px-2 py-1 rounded font-mono text-[11px] transition-colors cursor-pointer ${
+                        portraitLayout === "top"
+                          ? "bg-pink-500 text-white font-semibold"
+                          : "text-[#8b90a0] hover:text-[#e8e9ed]"
+                      }`}
+                      title="Top banner"
+                    >
+                      Top
+                    </button>
+                  </div>
+                )}
+
                 {favorites.length > 0 && (
                   <label className="flex items-center gap-1.5 rounded-lg bg-[#0d0e12] px-2.5 py-1.5 font-mono text-xs border border-rose-500/30 text-rose-300 cursor-pointer hover:border-rose-500/60 transition-colors">
                     <input
