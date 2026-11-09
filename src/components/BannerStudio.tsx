@@ -159,6 +159,7 @@ export default function BannerStudio() {
 
   // Touch Swipe
   const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
 
   // Manifest Data
   const allItems: BannerItem[] = useMemo(() => manifestData.items as BannerItem[], []);
@@ -208,9 +209,10 @@ export default function BannerStudio() {
     aspect: activeItem.aspect_ratio || null,
   }), [activeItem]);
 
-  // Ultra-fast CDN mirror URL with automatic fallback
+  // Ultra-fast CDN mirror URL with automatic fallback (properly encodes special characters like # and +)
   const primaryImageUrl = useMemo(() => {
-    return `https://fastly.jsdelivr.net/gh/cat-milk/Anime-Girls-Holding-Programming-Books@master/${activeItem.path}`;
+    const safePath = activeItem.path.split("/").map(encodeURIComponent).join("/");
+    return `https://fastly.jsdelivr.net/gh/cat-milk/Anime-Girls-Holding-Programming-Books@master/${safePath}`;
   }, [activeItem.path]);
 
   const [activeImgSrc, setActiveImgSrc] = useState(primaryImageUrl);
@@ -237,7 +239,8 @@ export default function BannerStudio() {
       const item = activePool[idx];
       if (item) {
         const pre = new Image();
-        pre.src = `https://fastly.jsdelivr.net/gh/cat-milk/Anime-Girls-Holding-Programming-Books@master/${item.path}`;
+        const safePath = item.path.split("/").map(encodeURIComponent).join("/");
+        pre.src = `https://fastly.jsdelivr.net/gh/cat-milk/Anime-Girls-Holding-Programming-Books@master/${safePath}`;
       }
     });
   }, [seed, activePool]);
@@ -555,18 +558,21 @@ export default function BannerStudio() {
     copyToClipboard(window.location.href, "share");
   };
 
-  // Touch swipes
+  // Touch swipes: only reroll on genuine horizontal swipe, ignoring vertical page scrolling
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null) return;
-    const diff = e.changedTouches[0].clientX - touchStartX.current;
-    if (Math.abs(diff) > 45) {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const diffX = e.changedTouches[0].clientX - touchStartX.current;
+    const diffY = e.changedTouches[0].clientY - touchStartY.current;
+    if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
       reroll();
     }
     touchStartX.current = null;
+    touchStartY.current = null;
   };
 
   // Catalog filtering by ratio, category & query
@@ -598,6 +604,10 @@ export default function BannerStudio() {
     if (preset === "custom") {
       return customW / customH;
     }
+    // For portrait covers, keep the natural portrait ratio so manga illustrations are never sliced horizontally
+    if (activeItem?.orientation === "portrait" || ratioFilter === "portrait") {
+      return activeItem?.aspect_ratio || activeImageAspect || 0.8;
+    }
     const matchedPreset = PRESETS.find((p) => p.id === preset);
     if (matchedPreset && matchedPreset.id !== "adaptive" && matchedPreset.width > 0 && matchedPreset.height > 0) {
       return matchedPreset.width / matchedPreset.height;
@@ -608,7 +618,6 @@ export default function BannerStudio() {
     if (activeImageAspect) {
       return activeImageAspect;
     }
-    if (ratioFilter === "portrait") return 0.8;
     if (ratioFilter === "square") return 1.0;
     return 1844 / 999;
   }, [preset, customW, customH, activeItem, activeImageAspect, ratioFilter]);
@@ -647,10 +656,7 @@ export default function BannerStudio() {
     vignette;
 
   return (
-    <div
-      className="mx-auto max-w-6xl px-4 py-4 sm:py-6"
-      style={{ zoom: "0.82" }}
-    >
+    <div className="mx-auto max-w-6xl px-4 py-4 sm:py-6">
       {/* Top Header */}
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#232632] pb-5">
         <div>
@@ -1000,7 +1006,7 @@ export default function BannerStudio() {
                   src={activeImgSrc}
                   alt={currentMeta.title}
                   className={`h-full w-full transition-opacity duration-200 ${
-                    preset === "adaptive"
+                    preset === "adaptive" || isPortraitCover
                       ? "object-contain"
                       : `object-cover ${crop === "top" ? "object-top" : "object-center"}`
                   }`}
@@ -1744,12 +1750,22 @@ export default function BannerStudio() {
               <div className="truncate">
                 Raw Endpoint: <span className="text-pink-300 select-all">{cleanEmbedUrl}</span>
               </div>
-              <button
-                onClick={() => copyToClipboard(cleanEmbedUrl, "raw")}
-                className="text-pink-400 hover:underline text-left sm:text-right cursor-pointer shrink-0"
-              >
-                {copiedFormat === "raw" ? "Copied URL!" : "Copy Raw Image URL"}
-              </button>
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  onClick={copyShareableLink}
+                  className="text-pink-400 hover:underline cursor-pointer flex items-center gap-1"
+                >
+                  <Share2 className="h-3 w-3" />
+                  <span>{copiedFormat === "share" ? "Copied Studio Link!" : "Share Studio Link"}</span>
+                </button>
+                <span className="text-zinc-700">|</span>
+                <button
+                  onClick={() => copyToClipboard(cleanEmbedUrl, "raw")}
+                  className="text-pink-400 hover:underline cursor-pointer"
+                >
+                  {copiedFormat === "raw" ? "Copied URL!" : "Copy Raw Image URL"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

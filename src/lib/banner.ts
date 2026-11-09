@@ -237,11 +237,12 @@ export async function fetchSourceImage(item: BannerItem): Promise<Buffer> {
   const cached = memoryCache.get(item.path);
   if (cached) return cached;
 
+  const safePath = item.path.split("/").map(encodeURIComponent).join("/");
   const urls = [
-    `https://fastly.jsdelivr.net/gh/cat-milk/Anime-Girls-Holding-Programming-Books@master/${item.path}`,
+    `https://fastly.jsdelivr.net/gh/cat-milk/Anime-Girls-Holding-Programming-Books@master/${safePath}`,
     item.cdn_url,
     item.raw_url,
-    `https://raw.githubusercontent.com/cat-milk/Anime-Girls-Holding-Programming-Books/master/${item.path}`,
+    `https://raw.githubusercontent.com/cat-milk/Anime-Girls-Holding-Programming-Books/master/${safePath}`,
   ];
 
   for (const url of urls) {
